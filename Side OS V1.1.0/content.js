@@ -1,38 +1,51 @@
-// content.js - Side OS 核心与网页交互脚本
-// 集成功能：滚轮切换、键盘快捷键、标题同步、划词灵动岛、AI自动填入
+// content.js - 全局滚轮与键盘监听脚本
+// 作用：
+// 1. 监听 Alt+滚轮 -> 通知侧边栏切换标签
+// 2. 监听 Alt+Q -> 通知侧边栏返回主页
+// 3. [V1.1.X 新增] 监听侧边栏导航指令 (后退/前进) - [已加固安全校验]
 
-// ==========================================
-// 1. 基础交互监听 (滚轮与键盘)
-// ==========================================
+// 1. 滚轮监听 (现有功能)
 window.addEventListener('wheel', (e) => {
-    // 监听 Alt+滚轮 -> 通知侧边栏切换标签
+    // 只有当按住 Alt 键时才触发
     if (e.altKey) {
         e.preventDefault();
         e.stopImmediatePropagation();
+
+        // 发送消息给侧边栏
         try {
             chrome.runtime.sendMessage({
                 action: "tabSwitchWheel",
                 direction: e.deltaY > 0 ? "next" : "prev"
-            }).catch(() => {}); // 防止侧边栏未打开时报错
-        } catch (err) {}
+            });
+        } catch (err) {
+            // 忽略连接错误
+        }
     }
 }, { passive: false });
 
+// 2. 键盘监听
 window.addEventListener('keydown', (e) => {
-    // 检测 Alt + Q -> 通知侧边栏返回主页
+    // 检测 Alt + Q (兼容大小写)
     if (e.altKey && (e.code === 'KeyQ' || e.key === 'q' || e.key === 'Q')) {
+        // 阻止网页可能存在的默认行为
         e.preventDefault();
+        
+        // 发送回家指令
         try {
-            chrome.runtime.sendMessage({ action: "goHome" }).catch(() => {});
-        } catch (err) {}
+            chrome.runtime.sendMessage({ action: "goHome" });
+        } catch (err) {
+            // 忽略连接错误
+        }
     }
 });
 
-// ==========================================
-// 2. 侧边栏导航指令监听 (后退/前进)
-// ==========================================
+// 3. [V1.1.X 新增] 监听侧边栏的导航指令
 window.addEventListener('message', function(event) {
+    // 安全校验1：确保有数据
     if (!event.data) return;
+
+    // 安全校验2：[新增] 验证消息来源是否为本扩展
+    // chrome-extension://<您的扩展ID>
     const expectedOrigin = 'chrome-extension://' + chrome.runtime.id;
     if (event.origin !== expectedOrigin) return;
 
@@ -43,39 +56,46 @@ window.addEventListener('message', function(event) {
     }
 });
 
-// ==========================================
-// 3. 标签页标题同步机制 (仅在 Side OS 内部运行时触发)
-// ==========================================
+// 4. [V1.5 新增] 标签页标题同步机制
+// 仅当 content.js 运行在 iframe (Side OS 内部) 时触发
 if (window.self !== window.top) {
     const reportTitleToSideOS = () => {
         try {
+            // 向父窗口 (Side OS 侧边栏) 发送标题更新消息
+            // "*" 允许跨域通信，因为我们在扩展环境相对可控，且只发送标题
             window.parent.postMessage({
                 type: 'SIDEOS_UPDATE_TITLE',
                 title: document.title || 'Loading...',
                 url: window.location.href
             }, '*');
-        } catch (e) {}
+        } catch (e) {
+            // 忽略跨域报错
+        }
     };
 
+    // 1. 页面加载完成后立即发送一次
     if (document.readyState === 'complete') {
         reportTitleToSideOS();
     } else {
         window.addEventListener('load', reportTitleToSideOS);
     }
 
+    // 2. 监听标题及其变化的 MutationObserver
     const titleTag = document.querySelector('title');
     if (titleTag) {
         const observer = new MutationObserver(reportTitleToSideOS);
         observer.observe(titleTag, { childList: true, subtree: true });
     }
     
+    // 3. 兜底：定时检查 (防止 SPA 页面切换标题后 Observer 失效)
     setInterval(() => {
         if(document.title) reportTitleToSideOS();
     }, 2000);
 }
 
+
 // ==========================================
-// 4. [V1.1.X 优化版] 划词灵动岛 (Shadow DOM)
+// 5. [V1.1.X 优化版] 划词灵动岛 (Shadow DOM) - 修复复制问题
 // ==========================================
 (function() {
     let toolbarMode = 'disable';
@@ -94,6 +114,7 @@ if (window.self !== window.top) {
         if (changes.sideos_selection_toolbar_mode) syncConfig();
     });
 
+    // 获取扩展内置图标 URL
     const logoUrl = chrome.runtime.getURL("icons/icon48.png");
 
     function createToolbar() {
@@ -110,17 +131,21 @@ if (window.self !== window.top) {
         toolbarShadow = shadow;
 
         // 样式：模仿 Side OS 的磨砂玻璃风格
+        // content.js - 替换原有的 style.textContent 代码块
+
+        // 样式：[优化] 迷你版磨砂风格 - 更小更精致
         const style = document.createElement('style');
         style.textContent = `
             :host { all: initial; }
             .sideos-dock {
-                display: flex; align-items: center; gap: 8px;
-                padding: 6px;
+                display: flex; align-items: center; 
+                // gap: 6px;        /* [调整] 间距缩小: 8px -> 6px */
+                // padding: 2px;    /* [调整] 内边距缩小: 6px -> 4px */
                 background: rgba(30, 30, 30, 0.85);
                 backdrop-filter: blur(12px);
                 border: 1px solid rgba(255,255,255,0.15);
-                border-radius: 12px;
-                box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+                border-radius: 8px; /* [调整] 圆角缩小: 12px -> 8px */
+                box-shadow: 0 4px 16px rgba(0,0,0,0.2);
                 opacity: 0; transform: translateY(10px) scale(0.95);
                 transition: opacity 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
                 pointer-events: auto;
@@ -129,8 +154,8 @@ if (window.self !== window.top) {
             .sideos-dock.show { opacity: 1; transform: translateY(0) scale(1); }
             
             .main-btn {
-                width: 32px; height: 32px;
-                border-radius: 8px;
+                width: 24px; height: 24px; /* [调整] 按钮容器缩小: 32px -> 24px */
+                border-radius: 4px;        /* [调整] 按钮圆角缩小 */
                 background: rgba(255,255,255,0.1);
                 display: flex; align-items: center; justify-content: center;
                 cursor: pointer;
@@ -138,12 +163,15 @@ if (window.self !== window.top) {
                 position: relative;
                 overflow: hidden;
             }
-            .main-btn:hover { background: rgba(255,255,255,0.2); transform: scale(1.05); }
+            .main-btn:hover { background: rgba(255,255,255,0.2); transform: scale(1.1); }
             .main-btn:active { transform: scale(0.95); }
-            .main-btn img { width: 20px; height: 20px; object-fit: contain; border-radius: 4px; pointer-events: none; }
+            
+            /* [调整] 内部图标图片缩小: 20px -> 14px */
+            .main-btn img { width: 20px; height: 20px; object-fit: contain; border-radius: 2px; pointer-events: none; }
         `;
         shadow.appendChild(style);
 
+        // 结构
         const dock = document.createElement('div');
         dock.className = 'sideos-dock';
         
@@ -152,33 +180,31 @@ if (window.self !== window.top) {
         mainBtn.title = '在 Side OS 中搜索';
         mainBtn.innerHTML = `<img src="${logoUrl}" alt="Side OS">`;
         
-        // [核心修复] 彻底解决双开问题
+        // [核心修复] 点击事件
         mainBtn.addEventListener('mousedown', (e) => {
             e.preventDefault(); e.stopPropagation();
             isClickingToolbar = true;
             
             const selection = window.getSelection().toString().trim();
             if (selection) {
-                // 立即复制
+                // [新增] 立即在网页端写入剪贴板
+                // 这是最可靠的复制时机，因为它发生在用户点击的瞬间
                 navigator.clipboard.writeText(selection).catch(err => {
-                    console.log("网页端复制受限");
+                    console.log("网页端复制受限，将依赖侧边栏兜底");
                 });
 
-                // 1. [唯一通道] 存入信箱
-                // 侧边栏通过监听这个数据的变化来执行任务
-                chrome.storage.local.set({ 
-                    'sideos_pending_action': { 
-                        type: 'toolbar', 
-                        text: selection 
-                    } 
-                });
+                // 1. 存入 Storage (为了 SidePanel 冷启动时能读取)
+                chrome.storage.local.set({ 'sideos_pending_search': selection });
 
-                // 2. 发送“打开”指令 (唤醒侧边栏)
-                chrome.runtime.sendMessage({ action: "openSidePanel" }).catch(()=>{});
+                // 2. 发送“打开”指令给 Background
+                chrome.runtime.sendMessage({ action: "openSidePanel" });
+
+                // 3. 同时发送直接搜索指令 (为了 SidePanel 已经打开的情况)
+                chrome.runtime.sendMessage({
+                    action: "performSearchFromToolbar",
+                    text: selection
+                });
                 
-                // ⚠️ 注意：之前这里有一段 sendMessage "performSearchFromToolbar" 的代码已被删除
-                // 这正是导致双重搜索的罪魁祸首
-
                 hideToolbar();
             }
             setTimeout(() => { isClickingToolbar = false; }, 200);
@@ -219,6 +245,7 @@ if (window.self !== window.top) {
         }
     }
 
+    // 监听鼠标抬起：显示工具栏
     document.addEventListener('mouseup', (e) => {
         if (toolbarMode === 'disable') return;
         if (isClickingToolbar) return;
@@ -241,85 +268,11 @@ if (window.self !== window.top) {
         }, 10);
     });
 
+    // 监听鼠标按下：隐藏工具栏
     document.addEventListener('mousedown', (e) => {
         if (toolbarContainer && e.target !== toolbarContainer) {
             hideToolbar();
         }
     });
 
-})();
-
-// ==========================================
-// 5. [新增] AI 网站自动填入与搜索脚本
-// ==========================================
-(function() {
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initAutoSearch);
-    } else {
-        initAutoSearch();
-    }
-
-    function initAutoSearch() {
-        chrome.storage.local.get(['sideos_auto_search_payload'], (res) => {
-            const payload = res.sideos_auto_search_payload;
-            if (!payload || !payload.text) return;
-
-            // 15秒内有效
-            if (Date.now() - payload.timestamp > 15000) {
-                chrome.storage.local.remove('sideos_auto_search_payload');
-                return;
-            }
-
-            tryFillAndSend(payload.text);
-        });
-    }
-
-    function tryFillAndSend(text) {
-        let attempts = 0;
-        const interval = setInterval(() => {
-            attempts++;
-            if (attempts > 20) {
-                clearInterval(interval);
-                chrome.storage.local.remove('sideos_auto_search_payload');
-                return;
-            }
-
-            let inputEl = 
-                document.querySelector('#prompt-textarea') || 
-                document.querySelector('textarea[placeholder*="Ask"]') ||
-                document.querySelector('textarea[id*="chat"]') ||
-                document.querySelector('div[contenteditable="true"]') ||
-                document.querySelector('textarea');
-            
-            if (inputEl) {
-                clearInterval(interval);
-                inputEl.focus();
-
-                if (inputEl.tagName === 'DIV') {
-                    inputEl.textContent = text;
-                } else {
-                    inputEl.value = text;
-                }
-                
-                inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-                inputEl.dispatchEvent(new Event('change', { bubbles: true }));
-
-                setTimeout(() => {
-                    const sendBtn = 
-                        document.querySelector('button[data-testid="send-button"]') ||
-                        document.querySelector('button[aria-label*="Send"]') || 
-                        document.querySelector('button[class*="send"]');
-
-                    if (sendBtn) {
-                        sendBtn.click();
-                    } else {
-                        inputEl.dispatchEvent(new KeyboardEvent('keydown', {
-                            key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
-                        }));
-                    }
-                    chrome.storage.local.remove('sideos_auto_search_payload');
-                }, 300);
-            }
-        }, 500);
-    }
 })();
