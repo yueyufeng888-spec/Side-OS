@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Side OS</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --text-color: #ffffff;
+            --panel-bg: rgba(30, 30, 30, 0.85);
+            --accent: #0a84ff;
+            --dock-bg: rgba(20, 20, 20, 0.75);
+            --icon-bg: rgba(255,255,255,0.15);
+            --input-bg: rgba(128,128,128,0.15);
+            --tab-bg: rgba(255,255,255,0.08);
+            --tab-active-bg: #ffffff;
+            --tab-active-text: #000000;
+            --border-color: rgba(128,128,128,0.1);
+        }
+
+        /* === Themes === */
+        body.pure-white-mode {
+            --bg-color: #ffffff; --text-color: #000000;
+            --panel-bg: rgba(245, 245, 245, 0.95); --dock-bg: rgba(240, 240, 240, 0.85); 
+            --icon-bg: #f0f0f5; --input-bg: #e5e5ea;
+            --tab-bg: #e0e0e0; --tab-active-bg: #ffffff; --tab-active-text: #000;
+        }
+        body.light-mode { 
+            --bg-color: #f2f2f7; --text-color: #000; 
+            --panel-bg: rgba(255,255,255,0.8); --dock-bg: rgba(255,255,255,0.7); 
+            --icon-bg: rgba(255,255,255,0.9); --input-bg: rgba(0,0,0,0.05);
+            --tab-bg: rgba(0,0,0,0.05); --tab-active-bg: #fff; --tab-active-text: #000;
+        }
+        body.cyber-mode { 
+            --bg-color: #0b0b15; --text-color: #0ff; 
+            --panel-bg: rgba(10,10,30,0.9); --accent: #f0f; --dock-bg: rgba(0,0,0,0.8); 
+            --icon-bg: rgba(0,255,255,0.1); --tab-bg: rgba(0,255,255,0.1); --tab-active-bg: #0ff; --tab-active-text: #000;
+        }
+        body.midnight-mode {
+            --bg-color: #0f172a; --text-color: #e2e8f0;
+            --panel-bg: rgba(30, 41, 59, 0.9); --accent: #38bdf8; --dock-bg: rgba(15, 23, 42, 0.8); 
+            --icon-bg: rgba(255,255,255,0.1); --tab-bg: rgba(255,255,255,0.05); --tab-active-bg: #38bdf8; --tab-active-text: #fff;
+        }
+        body.retro-mode {
+            --bg-color: #f5f5dc; --text-color: #5c4033;
+            --panel-bg: rgba(230, 220, 200, 0.9); --accent: #d2691e; --dock-bg: rgba(240, 230, 210, 0.85); 
+            --icon-bg: rgba(92, 64, 51, 0.1); --input-bg: rgba(92, 64, 51, 0.08);
+            --tab-bg: rgba(92, 64, 51, 0.1); --tab-active-bg: #f5f5dc; --tab-active-text: #5c4033;
+        }
+        body.violet-mode {
+            --bg-color: #2e1065; --text-color: #f3e8ff;
+            --panel-bg: rgba(88, 28, 135, 0.85); --accent: #d8b4fe; --dock-bg: rgba(46, 16, 101, 0.8); 
+            --icon-bg: rgba(255,255,255,0.15); --tab-bg: rgba(255,255,255,0.1); --tab-active-bg: #d8b4fe; --tab-active-text: #2e1065;
+        }
+
+        * { box-sizing: border-box; user-select: none; outline: none; -webkit-user-drag: none; }
+        
+        body { margin: 0; padding: 0; height: 100vh; background-color: var(--bg-color); color: var(--text-color); font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; overflow: hidden; transition: background 0.3s, color 0.3s; }
+
+        /* === [Global Tab Bar] 悬浮磨砂玻璃效果 === */
+        #browser-tabs-wrapper {
+            position: absolute; top: 0; left: 0; width: 100%; height: 44px;
+            display: flex; align-items: center; padding: 0 4px; z-index: 500;
+            background: rgba(30, 30, 30, 0.6); 
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transition: background 0.3s;
+        }
+        body.light-mode #browser-tabs-wrapper, body.pure-white-mode #browser-tabs-wrapper, body.retro-mode #browser-tabs-wrapper {
+            background: rgba(255, 255, 255, 0.65); border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+
+        #browser-tabs-bar { 
+            flex: 1; display: flex; align-items: center; gap: 6px; overflow-x: auto; height: 100%; 
+            border-bottom: none; padding: 0 8px; scrollbar-width: none;
+        }
+        #browser-tabs-bar::-webkit-scrollbar { display: none; }
+
+        /* [Tab Style] 胶囊样式 */
+        .browser-tab { 
+            height: 30px; min-width: 40px; max-width: 110px;
+            background: rgba(128,128,128,0.15); border-radius: 8px;
+            display: flex; align-items: center; justify-content: flex-start; padding: 0 8px; 
+            font-size: 12px; color: var(--text-color); cursor: pointer; position: relative; flex-shrink: 0; 
+            transition: all 0.2s; border: 1px solid transparent;
+        }
+        .browser-tab:hover { background: rgba(128,128,128,0.25); }
+        .browser-tab.active { 
+            background: var(--accent); color: #fff; font-weight: 500; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1);
+        }
+        body.light-mode .browser-tab.active, body.pure-white-mode .browser-tab.active { color: #fff; }
+
+        .tab-info { display: flex; align-items: center; width: 100%; height: 100%; gap: 6px; overflow: hidden; }
+        .tab-icon { width: 14px; height: 14px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .tab-icon img { width: 100%; height: 100%; border-radius: 2px; }
+        .tab-title-text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: clip;padding-right: 2px; font-size: 11px; opacity: 0.9; }
+
+        .tab-close-btn { 
+            width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; 
+            font-size: 10px; margin-left: 2px; opacity: 0; transition: opacity 0.2s; flex-shrink: 0;
+        }
+        .browser-tab:hover .tab-close-btn { opacity: 0.6; }
+        .tab-close-btn:hover { background: rgba(0,0,0,0.2); opacity: 1 !important; color: white; }
+
+        /* [新增] 仅图标模式样式 */
+        #browser-tabs-bar.tab-style-icon-only .browser-tab {
+            min-width: 34px; max-width: 34px; padding: 0; justify-content: center;
+        }
+        #browser-tabs-bar.tab-style-icon-only .tab-title-text { display: none; }
+        #browser-tabs-bar.tab-style-icon-only .tab-info { justify-content: center; gap: 0; }
+        #browser-tabs-bar.tab-style-icon-only .tab-close-btn { 
+            position: absolute; top: -4px; right: -4px; width: 14px; height: 14px; 
+            background: #ff3b30; color: white; opacity: 0; z-index: 10;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.5);
+        }
+        #browser-tabs-bar.tab-style-icon-only .browser-tab:hover .tab-close-btn { opacity: 1; }
+
+        #tab-add-btn { 
+            width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; margin-left: 4px; flex-shrink: 0; 
+            cursor: pointer; border-radius: 8px; font-size: 18px; color: var(--text-color); opacity: 0.7; 
+            background: rgba(128,128,128,0.1); transition: 0.2s;
+        }
+        #tab-add-btn:hover { background: rgba(128,128,128,0.25); opacity: 1; transform: scale(1.05); }
+
+        /* Desktop View */
+        #desktop-view { 
+            flex: 1; height: 100%; display: flex; flex-direction: column; 
+            background-size: cover; background-position: center; position: relative; overflow: hidden; 
+            padding-top: 44px;
+        }
+
+        /* Header */
+        .header-bar { flex-shrink: 0; width: 100%; height: 50px; display: flex; justify-content: space-between; align-items: center; padding: 0 20px; z-index: 60; margin-top: 5px; }
+        .header-btn { width: 32px; height: 32px; border-radius: 50%; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; font-size: 16px; cursor: pointer; transition: all 0.2s; color: var(--text-color); }
+        body.pure-white-mode .header-btn, body.retro-mode .header-btn { background: rgba(0,0,0,0.05); }
+        .header-btn:hover { background: rgba(255, 255, 255, 0.25); transform: scale(1.1); }
+        .header-btn:active { transform: scale(0.9); }
+        #header-done-btn { background: var(--accent); color: white; width: auto; padding: 0 12px; border-radius: 16px; font-size: 13px; font-weight: 600; display: none; }
+
+        /* Widget Container */
+        #widget-container { width: 88%; margin: 0 auto 15px auto; display: flex; justify-content: space-between; align-items: center; padding: 0 5px; z-index: 55; transition: all 0.3s; height: 40px; }
+        body.is-editing #widget-container { opacity: 0; pointer-events: none; transform: scale(0.95); }
+        .time-date-group { display: flex; flex-direction: column; justify-content: center; }
+        .time-text { font-size: 26px; font-weight: 600; line-height: 1; letter-spacing: -0.5px; text-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .date-text { font-size: 12px; opacity: 0.8; margin-top: 2px; font-weight: 500; }
+        .weather-group { display: flex; align-items: center; gap: 6px; background: rgba(128,128,128,0.15); backdrop-filter: blur(10px); padding: 4px 10px; border-radius: 12px; cursor: pointer; transition: background 0.2s; border: 1px solid rgba(255,255,255,0.05); }
+        .weather-group:hover { background: rgba(128,128,128,0.25); }
+        .weather-icon { font-size: 18px; }
+        .weather-temp { font-size: 13px; font-weight: 600; }
+
+        /* Search */
+        #home-search-container { flex-shrink: 0; width: 88%; max-width: none; margin: 0 auto 10px auto; position: relative; z-index: 50; transition: all 0.3s; }
+        body.is-editing #home-search-container { opacity: 0; pointer-events: none; transform: scale(0.95); }
+        .home-search-bar { width: 100%; height: 44px; background: var(--panel-bg); backdrop-filter: blur(15px); border-radius: 22px; border: 1px solid rgba(128,128,128,0.2); display: flex; align-items: center; padding: 0 5px 0 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        #home-search-icon-btn { font-size: 18px; margin-right: 8px; cursor: pointer; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background 0.2s; overflow: hidden; }
+        #home-search-icon-btn img { width: 20px; height: 20px; border-radius: 4px; }
+        #home-search-icon-btn:hover { background: rgba(128,128,128,0.2); }
+        #home-search-input { flex: 1; background: transparent; border: none; color: var(--text-color); font-size: 14px; height: 100%; }
+        .search-go-btn { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 50%; color: var(--accent); transition: background 0.2s; font-weight: bold; }
+        .search-go-btn:hover { background: rgba(128,128,128,0.15); }
+        .search-go-btn svg { width: 16px; height: 16px; fill: currentColor; }
+
+        /* Category Layout */
+        #category-wrapper { width: 90%; margin: 0 auto 5px auto; height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; z-index: 45; position: relative; }
+        #category-fixed { flex-shrink: 0; padding-top: 6px; }
+        #category-scroll { flex: 1; display: flex; gap: 8px; overflow-x: auto; height: 100%; align-items: center; padding-right: 4px; padding-top: 6px; scrollbar-width: none; -ms-overflow-style: none; cursor: grab; }
+        #category-scroll.active { cursor: grabbing; } #category-scroll::-webkit-scrollbar { display: none; }
+        .category-pill { padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 500; background: rgba(128,128,128,0.15); color: var(--text-color); opacity: 0.7; white-space: nowrap; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; user-select: none; flex-shrink: 0; position: relative; max-width: 80px; }
+        .category-pill:hover { opacity: 1; background: rgba(128,128,128,0.25); }
+        .category-pill.active { background: var(--accent); color: #fff; opacity: 1; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+        .category-pill.drag-hover { background: var(--accent); color: white; transform: scale(1.15); z-index: 100; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border-color: #fff; opacity: 1; }
+        body.pure-white-mode .category-pill.active { color: #fff; }
+        .category-delete-badge { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; background: rgba(142, 142, 147, 0.95); border-radius: 50%; color: white; display: none; align-items: center; justify-content: center; z-index: 1000; box-shadow: 0 1px 3px rgba(0,0,0,0.3); border: 1.5px solid #fff; cursor: pointer; }
+        .category-delete-badge svg { width: 6px; height: 6px; fill: white; }
+        body.is-editing .category-pill:not(#fixed-all-pill) { border: 1px dashed var(--accent); animation: jiggle 0.3s infinite ease-in-out; }
+        body.is-editing .category-pill .category-delete-badge { display: flex; animation: popIn 0.2s; }
+        .category-add-btn { width: 24px; height: 24px; border-radius: 50%; background: rgba(128,128,128,0.1); display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; color: var(--accent); margin-left: 2px; flex-shrink: 0; margin-top: 6px; }
+        .category-add-btn:hover { background: rgba(128,128,128,0.2); }
+
+        /* App Page */
+        #app-page-container { flex: 1; width: 100%; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scroll-behavior: smooth; padding-bottom: 5px; min-height: 0; }
+        #app-page-container::-webkit-scrollbar { display: none; }
+        .app-page { min-width: 100%; width: 100%; height: 100%; padding: 0 10px; display: grid; grid-template-columns: repeat(var(--cols, 4), 1fr); grid-template-rows: repeat(var(--rows, 6), 1fr); grid-gap: 8px; align-items: center; justify-items: center; scroll-snap-align: center; }
+        .app-item { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; cursor: pointer; position: relative; width: 100%; height: 100%; -webkit-tap-highlight-color: transparent; padding-top: 5px; }
+        .icon-squircle { width: 56px; height: 56px; max-width: 80%; max-height: 80%; aspect-ratio: 1; background: var(--icon-bg); border-radius: 22%; backdrop-filter: blur(10px); display: flex; justify-content: center; align-items: center; font-size: 28px; margin-bottom: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: 1px solid rgba(255,255,255,0.1); position: relative; transition: transform 0.2s; overflow: hidden; flex-shrink: 0; }
+        body.pure-white-mode .icon-squircle, body.retro-mode .icon-squircle { border: 1px solid rgba(0,0,0,0.15); }
+        .icon-wrapper { width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center; }
+        .icon-text-fallback { font-size: 24px; font-weight: bold; color: inherit; text-transform: uppercase; position: absolute; z-index: 1; }
+        .icon-img-content { width: 100%; height: 100%; object-fit: cover; border-radius: 22%; position: absolute; top: 0; left: 0; z-index: 2; opacity: 0; transition: opacity 0.3s; }
+        .icon-img-content.loaded { opacity: 1; }
+        .app-name { font-size: 11px; text-align: center; width: 100%; line-height: 1.2; padding: 0 2px 4px 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; white-space: normal; word-break: break-word; opacity: 0.9; max-height: 3em; }
+        #pagination-dots { flex-shrink: 0; height: 30px; width: 100%; display: flex; justify-content: center; align-items: center; gap: 6px; margin-bottom: 12px; z-index: 200; pointer-events: auto; }
+        .dot { width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.6); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; transition: all 0.3s; cursor: pointer; backdrop-filter: blur(2px); user-select: none; }
+        body.pure-white-mode .dot, body.retro-mode .dot { background: rgba(0,0,0,0.1); color: rgba(0,0,0,0.5); }
+        .dot:hover { background: rgba(255,255,255,0.4); transform: scale(1.3); color: white; z-index: 210; }
+        .dot.active { background: var(--accent); color: white; transform: scale(1.1); box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+        @keyframes jiggle { 0% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } 100% { transform: rotate(-2deg); } }
+        body.is-editing .app-item .icon-squircle { animation: jiggle 0.28s infinite ease-in-out; border-color: rgba(255, 255, 255, 0.6); }
+        #drag-ghost { position: fixed; pointer-events: none; z-index: 9999; width: 56px; height: 56px; background: var(--icon-bg); border-radius: 14px; display: none; justify-content: center; align-items: center; font-size: 26px; border: 2px solid var(--accent); opacity: 0.9; overflow: hidden; }
+        #drag-ghost img { width: 100%; height: 100%; object-fit: cover; border-radius: 14px; }
+        .app-item.is-dragging-source .icon-squircle { opacity: 0; } .app-item.is-dragging-source .app-name { opacity: 0; }
+        .delete-badge { position: absolute; top: 0; right: 8px; width: 20px; height: 20px; background: rgba(142, 142, 147, 0.95); border-radius: 50%; color: white; display: none; align-items: center; justify-content: center; z-index: 100; box-shadow: 0 2px 6px rgba(0,0,0,0.4); border: 2px solid #fff; cursor: pointer; }
+        body.is-editing .app-item .delete-badge { display: flex; animation: popIn 0.2s; }
+        .delete-badge svg { width: 8px; height: 8px; fill: white; }
+
+        #quick-engine-menu { position: fixed; background: var(--panel-bg); backdrop-filter: blur(25px); border-radius: 16px; padding: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); border: 1px solid rgba(128,128,128,0.15); display: none; flex-direction: column; gap: 4px; min-width: 140px; z-index: 2500; }
+        .quick-menu-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; cursor: pointer; font-size: 14px; color: var(--text-color); transition: background 0.1s; }
+        .quick-menu-item:hover { background: rgba(128,128,128,0.15); } .quick-menu-item img { width: 16px; height: 16px; border-radius: 3px; }
+
+        @media (max-height: 600px) { .header-bar { height: 40px; } #home-search-container { margin-bottom: 5px; } .home-search-bar { height: 38px; } .icon-squircle { width: 48px; height: 48px; font-size: 24px; } .app-name { font-size: 10px; } #pagination-dots { height: 24px; margin-bottom: 8px; } .dot { width: 16px; height: 16px; font-size: 9px; } }
+        @media (max-height: 450px) { .header-bar { height: 32px; } .home-search-bar { height: 32px; } .header-btn { width: 28px; height: 28px; font-size: 14px; } #pagination-dots { height: 20px; margin-bottom: 4px; } }
+
+        /* Settings View */
+        #settings-view { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; flex-direction: column; background: var(--bg-color); z-index: 1000; box-sizing: border-box; }
+        .settings-header { height: 54px; display: flex; align-items: center; padding: 0 15px; font-weight: 600; font-size: 18px; border-bottom: 1px solid rgba(128,128,128,0.1); flex-shrink: 0; }
+        .close-btn { margin-left: auto; cursor: pointer; color: var(--accent); font-size: 15px; background: rgba(128,128,128,0.1); padding: 5px 12px; border-radius: 15px; }
+        .settings-list { padding: 20px; overflow-y: auto; flex: 1; min-height: 0; padding-bottom: 40px; }
+        .setting-group { background: var(--panel-bg); border-radius: 14px; margin-bottom: 20px; overflow: visible; padding: 10px 0; }
+        .setting-item { height: 50px; display: flex; justify-content: space-between; align-items: center; padding: 0 15px; border-bottom: 1px solid rgba(128,128,128,0.1); font-size: 15px; }
+        .setting-item:last-child { border-bottom: none; }
+        .setting-sub-item {background-color: rgba(128, 128, 128, 0.06) !important; padding-left: 38px !important; height: 44px !important; font-size: 13.5px !important; border-top: none !important; position: relative;}
+        .setting-sub-item::before {content: '└';position: absolute;left: 20px;top: 12px;opacity: 0.3;font-family: monospace;font-size: 16px;}
+        .dock-settings-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 10px 15px; }
+        .dock-toggle-label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+        .dock-toggle-label input { accent-color: var(--accent); }
+        select { background: transparent; border: none; color: var(--accent); font-size: 14px; text-align: right; cursor: pointer; max-width: 150px; }
+        .card-title { font-size: 13px; font-weight: 600; opacity: 0.7; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; padding-left: 15px;}
+        .styled-input { width: 100%; height: 40px; background: var(--input-bg); border: 1px solid rgba(128,128,128,0.1); border-radius: 10px; padding: 0 12px; color: var(--text-color); font-size: 14px; transition: all 0.2s; }
+        .styled-input:focus { background: var(--input-bg); border-color: var(--accent); box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.2); }
+        .add-btn-primary { width: 100%; height: 40px; background: var(--accent); color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 5px; transition: opacity 0.2s; } .add-btn-primary:active { opacity: 0.8; transform: scale(0.98); }
+        .custom-engine-card { padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+        
+        /* Help Group */
+        .help-group { padding: 10px 0; display: flex; flex-direction: column; gap: 0; } .help-item { display: flex; align-items: center; padding: 12px 15px; border-bottom: 1px solid rgba(128,128,128,0.1); } .help-item:last-child { border-bottom: none; } .help-icon { font-size: 20px; margin-right: 12px; opacity: 0.8; width: 24px; text-align: center; } .help-info { flex: 1; display: flex; flex-direction: column; gap: 2px; } .help-main { font-size: 14px; font-weight: 500; } .help-sub { font-size: 12px; opacity: 0.5; }
+        .help-badge { background: rgba(128,128,128,0.15); padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; border: 1px solid rgba(128,128,128,0.1); font-family: Menlo, Monaco, Consolas, "Courier New", monospace; color: var(--text-color); min-width: 50px; text-align: center; }
+
+        /* Engine List */
+        .engine-manage-list { display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; width: 100%; padding: 4px; }
+        .engine-item-row { display: flex; align-items: center; justify-content: space-between; background: rgba(128,128,128,0.1); padding: 8px 12px; border-radius: 8px; font-size: 14px; color: var(--text-color); border: 1px solid transparent; }
+        .engine-item-name { display: flex; align-items: center; gap: 8px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .engine-delete-btn { width: 20px; height: 20px; background: #ff3b30; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: transform 0.2s; }
+        .engine-delete-btn:hover { transform: scale(1.1); }
+        .engine-delete-btn svg { width: 10px; height: 10px; fill: white; }
+        .empty-tip { text-align: center; opacity: 0.5; font-size: 12px; padding: 10px; }
+
+        /* Modal */
+        #universal-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); backdrop-filter: blur(5px); z-index: 9999; display: none; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s; }
+        #universal-modal.show { opacity: 1; }
+        .modal-card { width: 85%; max-width: 300px; background: var(--panel-bg); backdrop-filter: blur(25px); border-radius: 20px; padding: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); transform: scale(0.9); transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); display: flex; flex-direction: column; gap: 15px; }
+        #universal-modal.show .modal-card { transform: scale(1); }
+        body.pure-white-mode .modal-card, body.retro-mode .modal-card { border: 1px solid rgba(0,0,0,0.1); }
+        .modal-title { font-size: 17px; font-weight: 600; text-align: center; margin-bottom: 5px; }
+        .input-group { display: flex; flex-direction: column; gap: 8px; }
+        .modal-input { width: 100%; height: 40px; border-radius: 10px; border: none; background: rgba(128,128,128,0.15); padding: 0 12px; color: var(--text-color); font-size: 14px; }
+        .modal-input:focus { background: rgba(128,128,128,0.25); box-shadow: 0 0 0 2px var(--accent); }
+        .modal-row { display: flex; align-items: center; justify-content: space-between; padding: 0 5px; }
+        .modal-label { font-size: 13px; opacity: 0.8; font-weight: 500; }
+        #qr-container { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 10px 0; }
+        #qr-img { width: 160px; height: 160px; background: #fff; padding: 8px; border-radius: 12px; }
+        .qr-tip { font-size: 12px; opacity: 0.7; text-align: center; line-height: 1.4; }
+        .icon-input-wrapper { display: flex; gap: 8px; }
+        .file-upload-btn { width: 40px; height: 40px; border-radius: 10px; background: rgba(128,128,128,0.2); border: 1px dashed rgba(255,255,255,0.3); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; font-size: 20px; }
+        .file-upload-btn:hover { background: rgba(255,255,255,0.1); border-color: var(--accent); color: var(--accent); }
+        .modal-actions { display: flex; gap: 10px; margin-top: 10px; }
+        .modal-btn { flex: 1; height: 38px; border-radius: 10px; border: none; font-size: 14px; font-weight: 500; cursor: pointer; transition: 0.2s; }
+        .btn-cancel { background: rgba(128,128,128,0.15); color: var(--text-color); }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-danger { background: #ff3b30; color: white; }
+
+        /* Browser View */
+        #browser-view { display: none; flex-direction: column; flex: 1; min-height: 0; background: #fff; position: relative; width: 100%; padding-top: 44px; }
+        .browser-nav { height: 44px; background: var(--bg-color); display: flex; align-items: center; padding: 0 10px; gap: 10px; z-index: 50; border-bottom: 1px solid rgba(0,0,0,0.05); }
+        .url-box { flex: 1; height: 32px; background: rgba(128,128,128,0.1); border-radius: 8px; display: flex; align-items: center; padding: 0 8px; }
+        #nav-engine-icon { margin-right: 8px; font-size: 16px; cursor: pointer; padding: 2px; border-radius: 4px; transition: background 0.2s; display:flex; align-items:center; }
+        #nav-engine-icon img { width: 18px; height: 18px; border-radius: 4px; }
+        #url-input { width: 100%; background: transparent; border: none; color: var(--text-color); font-size: 13px; flex: 1; }
+        #nav-qr-btn { padding: 4px; cursor: pointer; opacity: 0.6; transition: opacity 0.2s; display: flex; align-items: center; }
+        #nav-qr-btn:hover { opacity: 1; }
+        #nav-qr-btn svg { width: 18px; height: 18px; fill: var(--text-color); }
+        #webviews-container { flex: 1; position: relative; background: #fff; width: 100%; overflow: hidden; }
+        #webviews-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; background: #fff; padding-bottom: 60px; }
+
+        .dock-container { position: absolute; bottom: 10px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; z-index: 100; width: 100%; }
+        .dock-bar { width: 92%; height: 50px; background: var(--dock-bg); backdrop-filter: blur(20px); border-radius: 16px; display: flex; justify-content: space-around; align-items: center; pointer-events: auto; box-shadow: 0 5px 20px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05); padding: 0 2px; }
+        body.pure-white-mode .dock-bar { border: 1px solid rgba(0,0,0,0.1); box-shadow: 0 5px 20px rgba(0,0,0,0.08); }
+        .dock-btn { background: transparent; border: none; color: var(--text-color); opacity: 0.6; width: 44px; height: 40px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; font-size: 10px; gap: 2px; }
+        .dock-btn svg { width: 20px; height: 20px; fill: currentColor; }
+        .dock-btn.active { color: var(--accent) !important; opacity: 1; background: rgba(128,128,128,0.1); }
+        .dock-btn:hover { color: var(--text-color); opacity: 1; background: rgba(128,128,128,0.05); }
+
+        .tooltip-icon { display: inline-flex; justify-content: center; align-items: center; width: 16px; height: 16px; border-radius: 50%; background: rgba(128, 128, 128, 0.3); color: var(--text-color); font-size: 11px; font-weight: bold; margin: 0 0 2px 6px; cursor: help; position: relative; vertical-align: middle; transition: background 0.2s; }
+        .tooltip-icon:hover { background: var(--accent); color: white; }
+        .tooltip-icon::after { content: attr(data-msg); position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(4px); color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: normal; white-space: normal; width: max-content; max-width: 180px; text-align: left; line-height: 1.5; opacity: 0; visibility: hidden; pointer-events: none; z-index: 9999; transition: all 0.2s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .tooltip-icon::before { content: ''; position: absolute; bottom: 85%; left: 50%; transform: translateX(-50%); border-width: 5px; border-style: solid; border-color: rgba(0, 0, 0, 0.85) transparent transparent transparent; opacity: 0; visibility: hidden; transition: all 0.2s ease; }
+        .tooltip-icon:hover::after, .tooltip-icon:hover::before { opacity: 1; visibility: visible; bottom: 135%; }
+        .tooltip-icon:hover::before { bottom: 95%; }
+
+        /* === V1.6.0 备份模块新样式 === */
+        .backup-card {
+            padding: 0 !important; /* 移除默认内边距，由内部容器控制 */
+            overflow: hidden;
+            background: var(--panel-bg);
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .backup-section {
+            padding: 12px 15px;
+            border-bottom: 1px solid rgba(128,128,128,0.1);
+        }
+        .backup-section:last-child { border-bottom: none; }
+
+        .section-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            opacity: 0.9;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .icon-btn {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            background: rgba(128,128,128,0.1);
+            color: var(--text-color);
+            transition: all 0.2s;
+        }
+        .icon-btn:hover { background: rgba(128,128,128,0.25); color: var(--accent); }
+        .icon-btn svg { width: 14px; height: 14px; fill: currentColor; }
+
+        /* 紧凑的操作按钮网格 */
+        .action-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .compact-btn {
+            height: 34px;
+            border-radius: 8px;
+            border: none;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: 0.2s;
+            background: rgba(128,128,128,0.1);
+            color: var(--text-color);
+        }
+        .compact-btn:hover { background: rgba(128,128,128,0.2); transform: translateY(-1px); }
+        .compact-btn.primary { background: rgba(10, 132, 255, 0.15); color: var(--accent); }
+        .compact-btn.primary:hover { background: var(--accent); color: white; }
+        .compact-btn.success { background: rgba(52, 168, 83, 0.15); color: #34A853; }
+        .compact-btn.success:hover { background: #34A853; color: white; }
+
+        /* WebDAV 配置面板 (默认隐藏) */
+        #webdav-config-panel {
+            background: rgba(0,0,0,0.2);
+            margin: 0 -15px -12px -15px; /* 撑满底部 */
+            padding: 15px;
+            border-top: 1px solid rgba(128,128,128,0.1);
+            display: none; /* JS 控制显示 */
+        }
+        #webdav-config-panel.show { display: block; animation: slideDown 0.2s; }
+
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 自动备份状态条 */
+        .auto-backup-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(128,128,128,0.08);
+            padding: 6px 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 11px;
+        }
+        .auto-info { display: flex; flex-direction: column; opacity: 0.8; }
+        .auto-time { font-family: monospace; opacity: 0.6; margin-top: 2px; }
+
+        /* 开关样式微调 */
+        .mini-switch { position: relative; display: inline-block; width: 30px; height: 16px; }
+        .mini-switch input { opacity: 0; width: 0; height: 0; }
+        .mini-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 16px; }
+        .mini-slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .mini-slider { background-color: var(--accent); }
+        input:checked + .mini-slider:before { transform: translateX(14px); }
+
+    </style>
+</head>
+<body>
+    
+    <div id="quick-engine-menu"></div>
+
+    <div id="browser-tabs-wrapper">
+        <div id="browser-tabs-bar">
+            </div>
+        <div id="tab-add-btn" title="返回主页">+</div>
+    </div>
+
+    <div id="desktop-view">
+        <div id="drag-ghost"></div>
+        <div class="header-bar">
+            <div class="header-btn" id="header-add-btn">➕</div>
+            <div id="header-right-area">
+                <div class="header-btn" id="header-settings-btn">⚙️</div>
+                <div class="header-btn" id="header-done-btn">完成</div>
+            </div>
+        </div>
+
+        <div id="widget-container">
+            <div class="time-date-group">
+                <div class="time-text" id="widget-time">--:--</div>
+                <div class="date-text" id="widget-date">--月--日</div>
+            </div>
+            <div class="weather-group" id="widget-weather" title="点击设置城市">
+                <div class="weather-icon" id="weather-icon">☁️</div>
+                <div class="weather-temp" id="weather-temp">--°</div>
+            </div>
+        </div>
+
+        <div id="home-search-container">
+            <div class="home-search-bar">
+                <div id="home-search-icon-btn">🔍</div>
+                <input type="text" id="home-search-input" placeholder="Search...">
+                <div class="search-go-btn" id="home-search-go"><svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg></div>
+            </div>
+        </div>
+
+        <div id="category-wrapper">
+            <div id="category-fixed">
+                <div class="category-pill" id="fixed-all-pill" data-id="all">全部</div>
+            </div>
+            <div id="category-scroll"></div>
+            <div class="category-add-btn" id="category-add-btn" title="添加分类">+</div>
+        </div>
+
+        <div id="app-page-container"></div>
+        <div id="pagination-dots"></div>
+    </div>
+
+    <div id="settings-view">
+        <div class="settings-header"><span style="flex:1;">控制中心</span><span class="close-btn" id="close-settings-btn">完成</span></div>
+        <div class="settings-list">
+            <div class="setting-group">
+                <div class="setting-item"><span>顶部小组件<span class="tooltip-icon" data-msg="显示或隐藏桌面顶部的时间和天气组件">?</span></span><select id="show-widget-select"><option value="show">👁️ 显示</option><option value="hide">🚫 隐藏</option></select></div>
+                <div class="setting-item"><span>天气城市<span class="tooltip-icon" data-msg="留空则自动定位。若不准确，请输入中文城市名例如：北京 或 beijing">?</span></span><input type="text" id="weather-city-input" placeholder="自动定位 (可填拼音)" style="background:transparent;border:1px solid rgba(128,128,128,0.2);border-radius:6px;color:var(--accent);text-align:right;width:140px;font-size:13px;padding:4px;"></div>
+                <div class="setting-item"><span>关闭时状态<span class="tooltip-icon" data-msg="关闭侧边栏后重新打开时状态，自动恢复关闭时标签或清空所有标签">?</span></span><select id="startup-behavior-select"><option value="restore">🔄 自动恢复</option><option value="clear">🗑️ 清空重置</option></select></div>
+                <div class="setting-item"><span>界面模式<span class="tooltip-icon" data-msg="应用图标默认界面模式，可设置电脑界面/手机界面打开网页">?</span></span><select
+                        id="default-mode-select">
+                        <option value="mobile">📱 手机模式</option>
+                        <option value="pc">💻 电脑模式</option>
+                    </select></div>
+                <div class="setting-item">
+                    <span>独立界面模式<span class="tooltip-icon" data-msg="启用时读取应用单独的界面模式(手机/电脑)，关闭时读取设置启动默认模式">?</span></span>
+                    <select id="independent-startup-mode-select">
+                        <option value="enable">✅ 启用</option>
+                        <option value="disable">🚫 禁用</option>
+                    </select>
+                </div>
+                <div class="setting-item"><span>打开方式<span class="tooltip-icon" data-msg="应用图标默认打开方式设置，在侧边栏内打开或在浏览器界面打开">?</span></span><select id="open-mode-select"><option value="side-panel">📱 侧边栏内</option><option value="new-tab">↗ 浏览器内</option></select></div>
+		        <div class="setting-item"><span>独立打开方式<span class="tooltip-icon" data-msg="启用时读取应用图标单独的打开方式，关闭时读取设置界面打开方式">?</span></span><select id="independent-mode-select"><option value="enable">✅ 启用</option><option value="disable">🚫 禁用</option></select></div>
+                <div class="setting-item"><span>标签样式<span class="tooltip-icon" data-msg="打开应用时顶部标签样式，可设置图标+标题或仅图标">?</span></span><select id="tab-style-select"><option value="standard">🔤 图标 + 标题</option><option value="icon-only">🖼️ 仅图标</option></select></div>
+                <div class="setting-item"><span>默认搜索引擎<span class="tooltip-icon" data-msg="打开侧边栏时，首页和网页界输入框默认搜索引擎">?</span></span><select id="engine-select"></select></div>
+                <div class="setting-item">
+                    <span>右键搜索模式<span class="tooltip-icon" data-msg="设置右键搜索偏好：选文字后可选择自动调用默认搜索引擎，或实现“自动复制并跳转至 AI 页面”以便手动粘贴搜索">?</span></span>
+                    <select id="context-menu-mode-select">
+                        <option value="search">🔍 默认引擎搜索</option>
+                        <option value="copy_open">📋 复制并跳转 AI</option>
+                    </select>
+                </div>
+                
+                <div class="setting-item setting-sub-item" id="context-ai-config-row" style="display:none; cursor:pointer;">
+                    <span>跳转 AI 网页</span>
+                
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span id="current-ai-name" style="color:var(--accent); font-size:14px;">ChatGPT</span>
+                        <svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:currentColor; opacity:0.5;">
+                            <path d="M7 10l5 5 5-5z" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+	        
+            <div class="setting-group">
+                <div class="setting-item">
+                    <span>桌面壁纸</span>
+                    <div style="display:flex; gap:5px; align-items:center;">
+                        <input type="file" id="custom-wallpaper-upload" accept="image/*" style="display:none;">
+                        <button id="upload-wallpaper-btn" class="compact-btn" style="display:none; padding:0 8px; height:24px; font-size:12px;">📤 上传</button>
+                        
+                        <select id="wallpaper-select">
+                            <option value="system">🖥️ 跟随系统</option>
+                            <option value="aurora">🌌 深邃极光</option>
+                            <option value="sunset">🌅 日落大道</option>
+                            <option value="ocean">🌊 深海幽蓝</option>
+                            <option value="dune">🏜️ 红色沙丘</option>
+                            <option value="abstract">🔷 抽象几何</option>
+                            <option value="pure-white">⚪ 纯白极简</option>
+                            <option value="black">⚫ 纯黑极简</option>
+                            <option value="custom">🖼️ 自定义图片</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <span>界面风格</span>
+                    <select id="theme-select">
+                        <option value="system">🖥️ 跟随系统</option>
+                        <option value="dark">🌑 深色模式</option>
+                        <option value="light">☀️ 浅色模式</option>
+                        <option value="midnight">🌃 午夜蓝调</option>
+                        <option value="retro">📜 复古纸张</option>
+                        <option value="violet">🔮 梦幻紫</option>
+                        <option value="cyber">🤖 赛博朋克</option>
+                        <option value="custom">🎨 自定义配色</option>
+                    </select>
+                </div>
+
+                <div id="custom-theme-panel" style="display:none; padding: 10px 15px; background: rgba(0,0,0,0.05); border-top: 1px solid rgba(128,128,128,0.1);">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                        <label style="font-size:12px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+                            强调色
+                            <input type="color" id="custom-color-accent" value="#0a84ff" style="border:none; background:none; height:24px; width:40px; cursor:pointer;">
+                        </label>
+                        <label style="font-size:12px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+                            背景色
+                            <input type="color" id="custom-color-bg" value="#121212" style="border:none; background:none; height:24px; width:40px; cursor:pointer;">
+                        </label>
+                        <label style="font-size:12px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+                            面板色
+                            <input type="color" id="custom-color-panel" value="#1e1e1e" style="border:none; background:none; height:24px; width:40px; cursor:pointer;">
+                        </label>
+                        <label style="font-size:12px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+                            文字色
+                            <input type="color" id="custom-color-text" value="#ffffff" style="border:none; background:none; height:24px; width:40px; cursor:pointer;">
+                        </label>
+                    </div>
+                    <button id="reset-custom-theme-btn" class="compact-btn" style="width:100%; margin-top:10px; height:28px;">重置默认配色</button>
+                </div>
+            </div>
+            
+            <div class="setting-group">
+                <div class="card-title">自定义 Dock 栏<span class="tooltip-icon" data-msg="网页界面底部Dock模块">?</span></div>
+                <div class="dock-settings-grid" id="dock-settings-container">
+                    <label class="dock-toggle-label"><input type="checkbox" data-target="nav-prev-tab" checked> 后退</label>
+                    <label class="dock-toggle-label"><input type="checkbox" data-target="nav-next-tab" checked> 前进</label>
+                    <label class="dock-toggle-label"><input type="checkbox" data-target="mode-switch-btn" checked> 模式</label>
+                    <label class="dock-toggle-label"><input type="checkbox" data-target="nav-home" checked> 主页</label>
+                    <label class="dock-toggle-label"><input type="checkbox" data-target="nav-refresh" checked> 刷新</label>
+                    <label class="dock-toggle-label"><input type="checkbox" data-target="nav-open-new" checked> 跳出</label>
+                </div>
+            </div>
+            
+            <div class="setting-group backup-card">
+                
+                <div class="backup-section">
+                    <div class="section-header-row">
+                        <div class="section-title">
+                             WebDAV 云备份
+                            <span class="tooltip-icon" data-msg="支持坚果云、Nextcloud等。数据存储在您的私有网盘中。">?</span>
+                        </div>
+                        <div class="icon-btn" id="toggle-webdav-config" title="设置服务器">
+                            <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.04.17 0 .34.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.58 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.04-.22 0-.45-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                        </div>
+                    </div>
+
+                    <div id="webdav-action-area">
+                        <div class="action-grid">
+                            <button id="cloud-upload-btn" class="compact-btn primary">
+                                <span>☁️ 上传备份</span>
+                            </button>
+                            <button id="cloud-download-btn" class="compact-btn success">
+                                <span>📥 恢复数据</span>
+                            </button>
+                        </div>
+
+                        <div class="auto-backup-bar">
+                            <div class="auto-info">
+                                <span>自动备份 (<input type="number" id="auto-backup-interval" value="6" min="6" style="width:30px;background:transparent;border:none;border-bottom:1px dashed #999;color:inherit;text-align:center;font-size:11px;">h)</span>
+                                <span class="auto-time" id="last-auto-backup-time">暂无记录</span>
+                            </div>
+                            <label class="mini-switch">
+                                <input type="checkbox" id="auto-backup-toggle">
+                                <span class="mini-slider"></span>
+                            </label>
+                        </div>
+                        
+                        <div id="cloud-status-msg" style="font-size:11px; color:var(--accent); text-align:center; height:14px; margin-top:6px;"></div>
+                    </div>
+
+                    <div id="webdav-config-panel">
+                        <div style="font-size:12px;opacity:0.7;margin-bottom:8px;">服务器配置</div>
+                        <div style="display:flex;flex-direction:column;gap:8px;">
+                            <input type="text" id="webdav-url" class="styled-input" placeholder="https://dav.jianguoyun.com/dav/" style="font-size:12px;height:36px;">
+                            <input type="text" id="webdav-user" class="styled-input" placeholder="账号 / 邮箱" style="font-size:12px;height:36px;">
+                            <input type="password" id="webdav-pass" class="styled-input" placeholder="应用密码" style="font-size:12px;height:36px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+                                <label style="font-size:12px;display:flex;align-items:center;gap:4px;opacity:0.8;">
+                                    <input type="checkbox" id="webdav-remember" checked> 记住密码
+                                </label>
+                                <button id="webdav-save-btn" class="compact-btn primary" style="width:80px;">保存</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="backup-section">
+                    <div class="section-header-row">
+                        <div class="section-title">本地备份</div>
+                    </div>
+                    <div class="action-grid">
+                        <button id="backup-export-btn" class="compact-btn">
+                            <span>📤 导出备份</span>
+                        </button>
+                        <button id="backup-import-btn" class="compact-btn">
+                            <span>📥 导入备份</span>
+                        </button>
+                        <input type="file" id="backup-file-input" accept=".json" style="display:none;">
+                    </div>
+                </div>
+
+            </div>
+            
+            <div class="setting-group help-group">
+                <div class="card-title">操作指引</div>
+                <div class="help-item">
+                    <div class="help-icon">⌨️</div>
+                    <div class="help-info"><span class="help-main">侧边栏显隐</span><span class="help-sub">一键呼出/隐藏侧边栏</span></div>
+                    <div class="help-badge" id="help-shortcut-key">Alt+S</div>
+                </div>
+		<div class="help-item">
+                    <div class="help-icon">🖱️</div>
+                    <div class="help-info"><span class="help-main">右键菜单</span><span class="help-sub">右键打开 / 关闭Side OS侧边栏<br>选择文本右键 在Side OS中搜索</span></div>
+                </div>
+                <div class="help-item">
+                    <div class="help-icon">🏠</div>
+                    <div class="help-info"><span class="help-main">返回首页</span><span class="help-sub">无论身处何地，一键回主界面</span></div>
+                    <div class="help-badge">Alt+Q</div>
+                </div>
+                <div class="help-item">
+                    <div class="help-icon">👆</div>
+                    <div class="help-info"><span class="help-main">编辑整理</span><span class="help-sub">长按任意图标进入编辑模式</span></div>
+                </div>
+                <div class="help-item">
+                    <div class="help-icon">🖱️</div>
+                    <div class="help-info"><span class="help-main">滚轮翻页</span><span class="help-sub">在图标区域滚动切换页面</span></div>
+                </div>
+                <div class="help-item">
+                    <div class="help-icon">🔄</div>
+                    <div class="help-info"><span class="help-main">快速切换</span><span class="help-sub">首页切分类 / 浏览器切标签</span></div>
+                    <div class="help-badge">Alt+滚轮</div>
+                </div>
+                <div class="help-item">
+                    <div class="help-icon">↔️</div>
+                    <div class="help-info"><span class="help-main">分类滑动</span><span class="help-sub">鼠标按住分类栏左右拖拽</span></div>
+                </div>
+            </div>
+            <div style="text-align:center;color:#999;font-size:12px;margin-top:20px;margin-bottom:20px;">Side OS V1.1.0</div>
+        </div>
+    </div> 
+
+    <div id="browser-view">
+        <div class="browser-nav">
+            <div class="url-box">
+                <span id="nav-engine-icon">🔍</span>
+                <input type="text" id="url-input" placeholder="Search...">
+                <div id="nav-qr-btn" title="手机扫码同步"><svg viewBox="0 0 24 24"><path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM13 13h2v2h-2v-2zm2 2h2v2h-2v-2zm0-2h2v2h-2v-2zm2 2h2v2h-2v-2zm2-2h2v2h-2v-2zm0 2h2v2h-2v-2zm-2 2h2v2h-2v-2zm0 2h2v2h-2v-2zm-2-2h2v2h-2v-2zm0 2h2v2h-2v-2z"/></svg></div>
+                <div class="search-go-btn" id="browser-search-go"><svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg></div>
+            </div>
+        </div>
+        
+        <div id="webviews-container"></div>
+
+        <div class="dock-container">
+            <div class="dock-bar">
+                <button class="dock-btn" id="nav-prev-tab"><svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg><span>后退</span></button>
+                <button class="dock-btn" id="nav-next-tab"><svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg><span>前进</span></button>
+                <button class="dock-btn" id="mode-switch-btn"><svg id="mode-switch-icon" viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg><span id="mode-switch-text">手机</span></button>
+                <button class="dock-btn home-btn" id="nav-home"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg><span>主页</span></button>
+                <button class="dock-btn" id="nav-refresh"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg><span>刷新</span></button>
+                <button class="dock-btn" id="nav-open-new"><svg viewBox="0 0 24 24"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg><span>跳出</span></button>
+            </div>
+        </div>
+    </div>
+
+    <div id="universal-modal">
+        <div class="modal-card">
+            <div id="modal-title" class="modal-title">编辑应用</div>
+            <div id="modal-form-content" class="input-group">
+                <input type="text" id="app-name-input" class="modal-input" placeholder="应用名称">
+                <input type="text" id="app-url-input" class="modal-input" placeholder="网址 (https://...)">
+                
+                <div class="modal-row">
+                    <span class="modal-label">分类</span>
+                    <select id="app-category-input" class="modal-input" style="width: 180px; text-align: right; color: var(--text-color);">
+                        <option value="default">📁 默认</option>
+                        <option value="work">💼 办公</option>
+                        <option value="entertainment">🎮 娱乐</option>
+                        <option value="tools">🛠️ 工具</option>
+                        <option value="reading">📖 阅读</option>
+                        <option value="dev">💻 开发</option>
+                    </select>
+                </div>
+
+                <div class="modal-row">
+                    <span class="modal-label">默认界面模式</span>
+                    <select id="app-startup-mode-input" class="modal-input"
+                        style="width: 180px; text-align: right; color: var(--text-color);">
+                        <option value="default">⚙️ 默认界面模式</option>
+                        <option value="mobile">📱 手机模式</option>
+                        <option value="pc">💻 电脑模式</option>
+                    </select>
+                </div>
+
+                <div class="modal-row">
+                    <span class="modal-label">默认打开方式</span>
+                    <select id="app-open-mode-input" class="modal-input" style="width: 180px; text-align: right; color: var(--text-color);">
+                        <option value="default">⚙️ 默认打开方式</option>
+                        <option value="side-panel">📱 在侧边栏打开</option>
+                        <option value="new-tab">↗ 新标签页打开</option>
+                    </select>
+                </div>
+
+                <div class="icon-input-wrapper">
+                    <input type="text" id="app-icon-input" class="modal-input" placeholder="Emoji / 图片URL / 留空自动获取" style="flex:1;">
+                    <input type="file" id="app-icon-file" accept="image/*" style="display:none;">
+                    <div class="file-upload-btn" id="trigger-upload-btn" title="上传本地图片">📂</div>
+                </div>
+            </div>
+            <div id="qr-container" style="display:none;">
+                <img id="qr-img" src="" alt="QR Code">
+                <div class="qr-tip">用手机扫码同步当前网页<br><span id="qr-url-text" style="font-size:10px; opacity:0.5; word-break:break-all;"></span></div>
+            </div>
+            <div id="modal-msg-content" style="text-align:center; opacity:0.8; line-height:1.5; display:none;">确定要删除这个应用吗？</div>
+            <div class="modal-actions"><button class="modal-btn btn-cancel" id="modal-cancel">取消</button><button class="modal-btn btn-primary" id="modal-confirm">保存</button></div>
+        </div>
+    </div>
+
+    <script src="sidepanel.js"></script>
+</body>
+</html>
