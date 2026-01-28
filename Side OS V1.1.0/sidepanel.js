@@ -1457,4 +1457,69 @@ document.addEventListener('DOMContentLoaded', function() {
         closeModal();
     });
     initSettings(); 
+
+    // [新增] 启动时查阅信箱，处理挂起的任务
+    function checkPendingAction() {
+        chrome.storage.local.get(['sideos_pending_action'], (res) => {
+            const action = res.sideos_pending_action;
+            if (action && action.text) {
+                // 1. 立即销毁信件，防止刷新重复触发
+                chrome.storage.local.remove('sideos_pending_action');
+                
+                console.log("处理挂起任务:", action);
+
+                // 2. 延迟执行，等待 DOM 初始化完毕
+                setTimeout(() => {
+                    const text = action.text;
+                    let mode = 'search';
+                    
+                    // 🎯 核心逻辑：根据来源读取不同的“复制/搜索”设置
+                    if (action.type === 'toolbar') {
+                        mode = localStorage.getItem('sideos_selection_toolbar_mode') || 'disable';
+                    } else if (action.type === 'context') {
+                        mode = localStorage.getItem('sideos_context_mode') || 'search';
+                    }
+
+                    if (mode === 'copy_open') {
+                        // === AI 模式 ===
+                        // 再次尝试复制以防万一
+                        navigator.clipboard.writeText(text).catch(()=>{});
+                        
+                        // 读取对应的 AI 网址
+                        let targetUrl = '';
+                        if (action.type === 'toolbar') {
+                             targetUrl = localStorage.getItem('sideos_selection_toolbar_url') || 'https://chatgpt.com/';
+                        } else {
+                             targetUrl = localStorage.getItem('sideos_context_url') || 'https://chatgpt.com/';
+                        }
+                        
+                        // 获取 AI 名称并跳转
+                        let targetName = "AI Assistant";
+                        const presets = PRESET_AIS; // 确保在 DOMContentLoaded 作用域内
+                        const customs = JSON.parse(localStorage.getItem('sideos_custom_ais') || '[]');
+                        const match = [...customs, ...presets].find(ai => ai.url === targetUrl);
+                        if(match) targetName = match.name;
+                        
+                        loadUrl(targetUrl, targetName, null, true);
+                        
+                    } else {
+                        // === 搜索模式 ===
+                        const engines = getEngines(); 
+                        const currentKey = localStorage.getItem('sideos_engine') || 'baidu'; 
+                        const eng = engines[currentKey];
+                        let searchUrl = eng ? eng.url + encodeURIComponent(text) : "https://www.baidu.com/s?wd=" + encodeURIComponent(text);
+                        
+                        // 强制在前台打开搜索结果
+                        if(desktopView) desktopView.style.display = 'none';
+                        if(browserView) browserView.style.display = 'flex';
+                        
+                        loadUrl(searchUrl, text, null, false);
+                    }
+                }, 300); // 300ms 延迟确保 iframe 容器已准备好
+            }
+        });
+    }
+
+    // 启动时立即执行检查
+    checkPendingAction();
 });

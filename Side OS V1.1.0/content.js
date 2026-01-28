@@ -93,6 +93,134 @@ if (window.self !== window.top) {
     }, 2000);
 }
 
+// ==========================================
+// 5. [V1.1.X 完整版] 划词灵动岛 (Shadow DOM + 信箱机制)
+// ==========================================
+(function() {
+    let toolbarMode = 'disable';
+    let toolbarShadow = null;
+    let toolbarContainer = null;
+    let isClickingToolbar = false;
+
+    // 同步配置
+    const syncConfig = () => {
+        chrome.storage.local.get(['sideos_selection_toolbar_mode'], (res) => {
+            toolbarMode = res.sideos_selection_toolbar_mode || 'disable';
+        });
+    };
+    syncConfig();
+    chrome.storage.onChanged.addListener((changes) => {
+        if (changes.sideos_selection_toolbar_mode) syncConfig();
+    });
+
+    const logoUrl = chrome.runtime.getURL("icons/icon48.png");
+
+    function createToolbar() {
+        if (toolbarContainer) return;
+        toolbarContainer = document.createElement('div');
+        toolbarContainer.style.all = 'initial';
+        toolbarContainer.style.position = 'absolute';
+        toolbarContainer.style.zIndex = '2147483647';
+        toolbarContainer.style.top = '-9999px';
+        toolbarContainer.style.left = '-9999px';
+        
+        const shadow = toolbarContainer.attachShadow({mode: 'open'});
+        toolbarShadow = shadow;
+
+        const style = document.createElement('style');
+        style.textContent = `
+            :host { all: initial; }
+            .sideos-dock {
+                display: flex; align-items: center; gap: 8px; padding: 6px;
+                background: rgba(30, 30, 30, 0.85); backdrop-filter: blur(12px);
+                border: 1px solid rgba(255,255,255,0.15); border-radius: 12px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+                opacity: 0; transform: translateY(10px) scale(0.95);
+                transition: opacity 0.2s, transform 0.2s; pointer-events: auto;
+            }
+            .sideos-dock.show { opacity: 1; transform: translateY(0) scale(1); }
+            .main-btn {
+                width: 32px; height: 32px; border-radius: 8px;
+                background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center;
+                cursor: pointer; transition: all 0.2s;
+            }
+            .main-btn:hover { background: rgba(255,255,255,0.2); transform: scale(1.05); }
+            .main-btn img { width: 20px; height: 20px; object-fit: contain; }
+        `;
+        shadow.appendChild(style);
+
+        const dock = document.createElement('div'); dock.className = 'sideos-dock';
+        const mainBtn = document.createElement('div'); mainBtn.className = 'main-btn';
+        mainBtn.title = 'Side OS 搜索/AI';
+        mainBtn.innerHTML = `<img src="${logoUrl}">`;
+        
+        // === 核心点击逻辑 ===
+        mainBtn.addEventListener('mousedown', (e) => {
+            e.preventDefault(); e.stopPropagation(); isClickingToolbar = true;
+            const selection = window.getSelection().toString().trim();
+            
+            if (selection) {
+                // 1. 立即复制 (修复复制失败问题)
+                navigator.clipboard.writeText(selection).catch(()=>{});
+
+                // 2. 存入信箱 (修复未打开侧边栏时参数失效问题)
+                chrome.storage.local.set({ 
+                    'sideos_pending_action': { 
+                        type: 'toolbar', 
+                        text: selection 
+                    } 
+                }, () => {
+                    // 3. 唤醒侧边栏
+                    chrome.runtime.sendMessage({ action: "openSidePanel" });
+                });
+
+                // 4. 双重保险 (针对已打开情况)
+                chrome.runtime.sendMessage({ action: "performSearchFromMenu", text: selection });
+                
+                hideToolbar();
+            }
+            setTimeout(() => { isClickingToolbar = false; }, 200);
+        });
+
+        dock.appendChild(mainBtn); shadow.appendChild(dock);
+        document.body.appendChild(toolbarContainer);
+    }
+
+    function showToolbar(x, y) {
+        if (!toolbarContainer) createToolbar();
+        const dock = toolbarShadow.querySelector('.sideos-dock');
+        let finalX = x + 10; let finalY = y + 10;
+        if (finalX + 60 > window.innerWidth) finalX = x - 60;
+        if (finalY + 60 > window.innerHeight) finalY = y - 60;
+        toolbarContainer.style.top = finalY + 'px'; toolbarContainer.style.left = finalX + 'px';
+        requestAnimationFrame(() => dock.classList.add('show'));
+    }
+
+    function hideToolbar() {
+        if (toolbarContainer && toolbarShadow) {
+            const dock = toolbarShadow.querySelector('.sideos-dock');
+            if(dock) dock.classList.remove('show');
+            setTimeout(() => { toolbarContainer.style.top = '-9999px'; }, 250);
+        }
+    }
+
+    document.addEventListener('mouseup', (e) => {
+        if (toolbarMode === 'disable' || isClickingToolbar) return;
+        setTimeout(() => {
+            const txt = window.getSelection().toString().trim();
+            if (txt) {
+                try {
+                    const range = window.getSelection().getRangeAt(0);
+                    const rect = range.getBoundingClientRect();
+                    showToolbar(rect.right + window.scrollX, rect.bottom + window.scrollY);
+                } catch(e) { showToolbar(e.pageX, e.pageY); }
+            } else { hideToolbar(); }
+        }, 10);
+    });
+    document.addEventListener('mousedown', (e) => {
+        if (toolbarContainer && e.target !== toolbarContainer) hideToolbar();
+    });
+})();
 
 // ==========================================
 // 5. [V1.1.X 优化版] 划词灵动岛 (Shadow DOM) - 修复复制问题

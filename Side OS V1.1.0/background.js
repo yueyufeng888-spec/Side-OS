@@ -124,20 +124,20 @@ function toggleSidePanelPermission(tabId) {
 
 function handleMenuClick(info, windowId, tab) {
     if (info.menuItemId === "sideos_search") {
-        // [修复] 存入 storage 信箱，注明来源是 "context" (右键)
+        // [修复] 1. 先把任务存入 Storage 信箱 (注明来源 context)
         chrome.storage.local.set({ 
             'sideos_pending_action': { 
                 type: 'context', 
                 text: info.selectionText 
             } 
         }, () => {
-            // 存好后再开门
+            // 2. 存好后再开门，确保侧边栏启动时能读到
             if (chrome.sidePanel && chrome.sidePanel.open) {
                 chrome.sidePanel.open({ windowId: windowId }).catch(() => {});
             }
         });
         
-        // 保留消息发送作为双重保险 (针对侧边栏已经打开的情况)
+        // 3. 双重保险：如果侧边栏已经是打开的，发消息也能触发
         setTimeout(() => {
             chrome.runtime.sendMessage({ 
                 action: "performSearchFromMenu", 
