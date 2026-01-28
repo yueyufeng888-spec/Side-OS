@@ -92,3 +92,187 @@ if (window.self !== window.top) {
         if(document.title) reportTitleToSideOS();
     }, 2000);
 }
+
+
+// ==========================================
+// 5. [V1.1.X 优化版] 划词灵动岛 (Shadow DOM) - 修复复制问题
+// ==========================================
+(function() {
+    let toolbarMode = 'disable';
+    let toolbarShadow = null;
+    let toolbarContainer = null;
+    let isClickingToolbar = false;
+
+    // 读取配置
+    const syncConfig = () => {
+        chrome.storage.local.get(['sideos_selection_toolbar_mode'], (res) => {
+            toolbarMode = res.sideos_selection_toolbar_mode || 'disable';
+        });
+    };
+    syncConfig();
+    chrome.storage.onChanged.addListener((changes) => {
+        if (changes.sideos_selection_toolbar_mode) syncConfig();
+    });
+
+    // 获取扩展内置图标 URL
+    const logoUrl = chrome.runtime.getURL("icons/icon48.png");
+
+    function createToolbar() {
+        if (toolbarContainer) return;
+        
+        toolbarContainer = document.createElement('div');
+        toolbarContainer.style.all = 'initial';
+        toolbarContainer.style.position = 'absolute';
+        toolbarContainer.style.zIndex = '2147483647';
+        toolbarContainer.style.top = '-9999px';
+        toolbarContainer.style.left = '-9999px';
+        
+        const shadow = toolbarContainer.attachShadow({mode: 'open'});
+        toolbarShadow = shadow;
+
+        // 样式：模仿 Side OS 的磨砂玻璃风格
+        const style = document.createElement('style');
+        style.textContent = `
+            :host { all: initial; }
+            .sideos-dock {
+                display: flex; align-items: center; gap: 8px;
+                padding: 6px;
+                background: rgba(30, 30, 30, 0.85);
+                backdrop-filter: blur(12px);
+                border: 1px solid rgba(255,255,255,0.15);
+                border-radius: 12px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+                opacity: 0; transform: translateY(10px) scale(0.95);
+                transition: opacity 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+                pointer-events: auto;
+                cursor: default;
+            }
+            .sideos-dock.show { opacity: 1; transform: translateY(0) scale(1); }
+            
+            /* Logo 图标按钮 */
+            .main-btn {
+                width: 32px; height: 32px;
+                border-radius: 8px;
+                background: rgba(255,255,255,0.1);
+                display: flex; align-items: center; justify-content: center;
+                cursor: pointer;
+                transition: all 0.2s;
+                position: relative;
+                overflow: hidden;
+            }
+            .main-btn:hover { background: rgba(255,255,255,0.2); transform: scale(1.05); }
+            .main-btn:active { transform: scale(0.95); }
+            .main-btn img { width: 20px; height: 20px; object-fit: contain; border-radius: 4px; pointer-events: none; }
+        `;
+        shadow.appendChild(style);
+
+        // 结构
+        const dock = document.createElement('div');
+        dock.className = 'sideos-dock';
+        
+        const mainBtn = document.createElement('div');
+        mainBtn.className = 'main-btn';
+        mainBtn.title = '在 Side OS 中搜索';
+        mainBtn.innerHTML = `<img src="${logoUrl}" alt="Side OS">`;
+        
+        // [核心修复] 点击事件
+        mainBtn.addEventListener('mousedown', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            isClickingToolbar = true;
+            
+            const selection = window.getSelection().toString().trim();
+            if (selection) {
+                // [新增] 立即在网页端写入剪贴板
+                // 这是最可靠的复制时机，因为它发生在用户点击的瞬间
+                navigator.clipboard.writeText(selection).catch(err => {
+                    console.log("网页端复制受限，将依赖侧边栏兜底");
+                });
+
+                // 1. [修改] 存入统一的 pending_action 信箱，注明来源 "toolbar"
+                chrome.storage.local.set({ 
+                    'sideos_pending_action': { 
+                        type: 'toolbar', 
+                        text: selection 
+                    } 
+                });
+
+                // 2. 发送“打开”指令给 Background
+                chrome.runtime.sendMessage({ action: "openSidePanel" });
+
+                // 3. 同时发送直接搜索指令 (为了 SidePanel 已经打开的情况)
+                chrome.runtime.sendMessage({
+                    action: "performSearchFromToolbar",
+                    text: selection
+                });
+                
+                hideToolbar();
+            }
+            setTimeout(() => { isClickingToolbar = false; }, 200);
+        });
+
+        dock.appendChild(mainBtn);
+        shadow.appendChild(dock);
+        document.body.appendChild(toolbarContainer);
+    }
+
+    function showToolbar(x, y) {
+        if (!toolbarContainer) createToolbar();
+        const dock = toolbarShadow.querySelector('.sideos-dock');
+        
+        const winW = window.innerWidth;
+        const winH = window.innerHeight;
+        let finalX = x + 10;
+        let finalY = y + 10;
+
+        if (finalX + 60 > winW) finalX = x - 60;
+        if (finalY + 60 > winH) finalY = y - 60;
+
+        toolbarContainer.style.top = finalY + 'px';
+        toolbarContainer.style.left = finalX + 'px';
+        
+        requestAnimationFrame(() => {
+            if(dock) dock.classList.add('show');
+        });
+    }
+
+    function hideToolbar() {
+        if (toolbarContainer && toolbarShadow) {
+            const dock = toolbarShadow.querySelector('.sideos-dock');
+            if (dock) dock.classList.remove('show');
+            setTimeout(() => {
+                toolbarContainer.style.top = '-9999px';
+            }, 250);
+        }
+    }
+
+    // 监听鼠标抬起：显示工具栏
+    document.addEventListener('mouseup', (e) => {
+        if (toolbarMode === 'disable') return;
+        if (isClickingToolbar) return;
+
+        setTimeout(() => {
+            const selection = window.getSelection();
+            const text = selection.toString().trim();
+            
+            if (text && text.length > 0) {
+                try {
+                    const range = selection.getRangeAt(0);
+                    const rect = range.getBoundingClientRect();
+                    showToolbar(rect.right + window.scrollX, rect.bottom + window.scrollY);
+                } catch(err) {
+                    showToolbar(e.pageX, e.pageY);
+                }
+            } else {
+                hideToolbar();
+            }
+        }, 10);
+    });
+
+    // 监听鼠标按下：隐藏工具栏
+    document.addEventListener('mousedown', (e) => {
+        if (toolbarContainer && e.target !== toolbarContainer) {
+            hideToolbar();
+        }
+    });
+
+})();

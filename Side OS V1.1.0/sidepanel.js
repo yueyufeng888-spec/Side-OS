@@ -133,7 +133,8 @@ document.addEventListener('DOMContentLoaded', function() {
     let dragCategorySrcId = null;   // For Categories
     let longPressTimer = null;
     let didTriggerLongPress = false; 
-    let currentModalAction = null; 
+    let currentModalAction = null;
+    let aiConfigTarget = 'context'; // [新增] 记忆当前正在配置的是 "toolbar" 还是 "context" 
     let currentTargetId = null; 
     let currentUploadedIcon = null;
     let pendingCloudData = null; 
@@ -282,6 +283,40 @@ document.addEventListener('DOMContentLoaded', function() {
                 let searchUrl = eng ? eng.url + encodeURIComponent(msg.text) : "https://www.baidu.com/s?wd=" + encodeURIComponent(msg.text);
                 loadUrl(searchUrl, msg.text, null, false); 
             }
+        }
+        else if (msg.action === 'performSearchFromToolbar' && msg.text) {
+             // [新增] 处理来自划词工具栏的请求
+             window.focus();
+             // 强制读取工具栏的设置
+             const mode = localStorage.getItem('sideos_selection_toolbar_mode') || 'disable';
+             
+             if (mode === 'copy_open') {
+                 // 复用之前的复制逻辑
+                 const robustCopy = (text) => {
+                    navigator.clipboard.writeText(text).then(() => {
+                        if (typeof showStatus === 'function') showStatus("✅ 已复制，请粘贴", 2000);
+                    }).catch(() => {});
+                 };
+                 robustCopy(msg.text);
+                 
+                 // 读取工具栏专用的 AI URL
+                 let targetUrl = localStorage.getItem('sideos_selection_toolbar_url') || 'https://chatgpt.com/';
+                 let targetName = "AI Assistant";
+                 
+                 // 查找名称
+                 const allAis = [...JSON.parse(localStorage.getItem('sideos_custom_ais') || '[]'), ...PRESET_AIS];
+                 const match = allAis.find(ai => ai.url === targetUrl);
+                 if(match) targetName = match.name;
+                 
+                 loadUrl(targetUrl, targetName, null, true);
+                 
+             } else if (mode === 'search') {
+                 const engines = getEngines(); 
+                 const currentKey = localStorage.getItem('sideos_engine') || 'baidu'; 
+                 const eng = engines[currentKey];
+                 let searchUrl = eng ? eng.url + encodeURIComponent(msg.text) : "https://www.baidu.com/s?wd=" + encodeURIComponent(msg.text);
+                 loadUrl(searchUrl, msg.text, null, false); 
+             }
         }
     });
 
@@ -813,6 +848,36 @@ document.addEventListener('DOMContentLoaded', function() {
 
         helpShortcutKey.textContent = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? '⌥ S' : 'Alt+S';
 
+        // [新增] 划词工具栏设置逻辑
+        const toolbarModeSelect = document.getElementById('selection-toolbar-mode-select');
+        const toolbarAiRow = document.getElementById('selection-toolbar-ai-config-row');
+        const currentToolbarAiName = document.getElementById('current-toolbar-ai-name');
+
+        const updateToolbarUI = () => {
+            const val = localStorage.getItem('sideos_selection_toolbar_mode') || 'disable';
+            toolbarModeSelect.value = val;
+            toolbarAiRow.style.display = (val === 'copy_open') ? 'flex' : 'none';
+            
+            // 核心：将配置同步到 storage，以便 content.js (网页端) 能读取到
+            chrome.storage.local.set({ 'sideos_selection_toolbar_mode': val });
+
+            const url = localStorage.getItem('sideos_selection_toolbar_url') || 'https://chatgpt.com/';
+            const allAis = [...PRESET_AIS, ...JSON.parse(localStorage.getItem('sideos_custom_ais')||'[]')];
+            const match = allAis.find(ai => ai.url === url);
+            currentToolbarAiName.textContent = match ? match.name : "自定义链接";
+        };
+
+        if (toolbarModeSelect) {
+            toolbarModeSelect.addEventListener('change', () => {
+                localStorage.setItem('sideos_selection_toolbar_mode', toolbarModeSelect.value);
+                updateToolbarUI();
+            });
+            toolbarAiRow.addEventListener('click', () => {
+                // 传入 'toolbar' 标记，告诉弹窗我们在设置工具栏
+                openModal('select_ai_service', 'toolbar'); 
+            });
+            updateToolbarUI();
+        }
         const contextModeSelect = document.getElementById('context-menu-mode-select');
         const contextAiRow = document.getElementById('context-ai-config-row');
         const currentAiNameDisplay = document.getElementById('current-ai-name');
@@ -836,8 +901,38 @@ document.addEventListener('DOMContentLoaded', function() {
             contextModeSelect.addEventListener('change', () => { localStorage.setItem('sideos_context_mode', contextModeSelect.value); updateContextUI(); });
             contextAiRow.addEventListener('click', () => { openModal('select_ai_service'); });
         }
+
         
         renderCategories(); setTimeout(recalculateGrid, 100); if (startupBehaviorSelect.value === 'restore') restoreSession();
+        // [新增] 启动时检查是否有待处理的划词搜索任务 (针对未打开侧边栏的情况)
+        chrome.storage.local.get(['sideos_pending_search'], (res) => {
+            if (res.sideos_pending_search) {
+                const text = res.sideos_pending_search;
+                // 立即清除，防止下次误触发
+                chrome.storage.local.remove('sideos_pending_search');
+                
+                // 延迟一点点，确保 DOM 准备好
+                setTimeout(() => {
+                    // 模拟发送消息给自己，复用已有的搜索逻辑
+                    const msg = { action: 'performSearchFromMenu', text: text };
+                    // 直接调用 onMessage 逻辑不太方便，我们直接复用 performSearchFromMenu 的处理代码
+                    // 为了代码复用，最简单的方法是手动触发一次消息逻辑
+                    // 或者直接调用搜索函数：
+                    
+                    // 读取搜索模式配置
+                    const mode = localStorage.getItem('sideos_selection_toolbar_mode') || 'disable';
+                    // 如果用户设置了工具栏是“复制并跳转”，则走 AI 逻辑，否则走搜索
+                    // 注意：这里我们读取的是 toolbar 的配置，但因为是冷启动，我们简单处理，优先响应搜索
+                    
+                    const engines = getEngines(); 
+                    const currentKey = localStorage.getItem('sideos_engine') || 'baidu'; 
+                    const eng = engines[currentKey];
+                    let searchUrl = eng ? eng.url + encodeURIComponent(text) : "https://www.baidu.com/s?wd=" + encodeURIComponent(text);
+                    
+                    loadUrl(searchUrl, text, null, false);
+                }, 300);
+            }
+        });
         initTabsUI(); enableMomentumScroll(categoryScrollContainer); enableMomentumScroll(browserTabsBar); initWebDAV();
     }
 
@@ -848,22 +943,41 @@ document.addEventListener('DOMContentLoaded', function() {
         dockSettingsContainer.querySelectorAll('input').forEach(cb => { cb.checked = settings[cb.dataset.target] !== false; cb.addEventListener('change', () => { settings[cb.dataset.target] = cb.checked; localStorage.setItem('sideos_dock_settings', JSON.stringify(settings)); apply(); }); }); apply();
     }
 
-    function switchUA(type) { chrome.runtime.sendMessage({action: type === 'mobile' ? 'enableMobile' : 'disableMobile'}, (response) => { Object.values(activeTabs).forEach(t => { if (t.frame) { t.frame.src = t.frame.src; } }); }); }
+    function switchUA(type, callback) { 
+        chrome.runtime.sendMessage({
+            action: type === 'mobile' ? 'enableMobile' : 'disableMobile'
+        }, (response) => { 
+            // 只有当传入了明确的回调函数时（比如手动点击了切换按钮），才执行刷新
+            if (callback && typeof callback === 'function') {
+                callback();
+            }
+        }); 
+    }
     function updateModeBtnUI(type) { const path = type === 'mobile' ? ICON_MOBILE : ICON_PC; const text = type === 'mobile' ? '手机' : '电脑'; modeSwitchIcon.querySelector('path').setAttribute('d', path); modeSwitchText.textContent = text; }
     
     // === 底部按钮手动切换逻辑 (更新当前标签页的状态) ===
+    // [修改] 底部模式切换按钮：只有在这里手动点击时，才需要强制刷新当前网页
     modeSwitchBtn.addEventListener('click', () => { 
         const currentUiText = modeSwitchText.textContent;
         const currentMode = currentUiText === '手机' ? 'mobile' : 'pc'; 
         const newMode = currentMode === 'mobile' ? 'pc' : 'mobile'; 
         
-        switchUA(newMode); 
+        // 传入回调函数，仅刷新“当前正在看”的这一个标签，不影响后台其他标签
+        switchUA(newMode, () => {
+            if (currentActiveId && activeTabs[currentActiveId]) {
+                 // 刷新当前页以应用新 User-Agent
+                 if (activeTabs[currentActiveId].frame) {
+                    activeTabs[currentActiveId].frame.src = activeTabs[currentActiveId].frame.src;
+                 }
+            }
+        }); 
+        
         updateModeBtnUI(newMode); 
         
-        // 更新当前激活标签页的模式记录
+        // 更新记录
         if (currentActiveId && activeTabs[currentActiveId]) {
             activeTabs[currentActiveId].mode = newMode;
-            saveSession(); // 保存状态变更
+            saveSession(); 
         }
     });
 
@@ -991,6 +1105,69 @@ document.addEventListener('DOMContentLoaded', function() {
     homeSearchIconBtn.addEventListener('click', (e) => { e.stopPropagation(); showEngineMenu(20, 65); });
     navEngineIcon.addEventListener('click', (e) => { e.stopPropagation(); showEngineMenu(10, 50); });
     document.addEventListener('click', (e) => { if (!quickEngineMenu.contains(e.target) && e.target !== homeSearchIconBtn && e.target !== navEngineIcon) quickEngineMenu.style.display = 'none'; });
+    // [新增] 启动时的统一任务检查器
+    function checkPendingAction() {
+        chrome.storage.local.get(['sideos_pending_action'], (res) => {
+            const action = res.sideos_pending_action;
+            if (action && action.text) {
+                // 立即清除信箱，防止刷新重复触发
+                chrome.storage.local.remove('sideos_pending_action');
+                
+                // 延迟执行，确保 DOM 和配置已加载
+                setTimeout(() => {
+                    const text = action.text;
+                    let mode = 'search'; // 默认模式
+                    
+                    // 🎯 核心修复：根据来源读取不同的设置
+                    if (action.type === 'toolbar') {
+                        // 如果来自划词工具栏，读取工具栏的设置
+                        mode = localStorage.getItem('sideos_selection_toolbar_mode') || 'disable';
+                    } else if (action.type === 'context') {
+                        // 如果来自右键菜单，读取右键菜单的设置
+                        mode = localStorage.getItem('sideos_context_mode') || 'search';
+                    }
+
+                    console.log(`处理挂起任务: 来源=${action.type}, 模式=${mode}, 内容=${text}`);
+
+                    // === 执行逻辑 (复用现有代码) ===
+                    if (mode === 'copy_open') {
+                        // 1. AI 模式逻辑
+                        const robustCopy = (t) => { navigator.clipboard.writeText(t).catch(()=>{}); };
+                        robustCopy(text); // 再次尝试复制以防万一
+                        
+                        // 读取对应的 AI URL
+                        let targetUrl = '';
+                        if (action.type === 'toolbar') {
+                             targetUrl = localStorage.getItem('sideos_selection_toolbar_url') || 'https://chatgpt.com/';
+                        } else {
+                             targetUrl = localStorage.getItem('sideos_context_url') || 'https://chatgpt.com/';
+                        }
+                        
+                        // 查找 AI 名称
+                        let targetName = "AI Assistant";
+                        const presets = PRESET_AIS;
+                        const customs = JSON.parse(localStorage.getItem('sideos_custom_ais') || '[]');
+                        const match = [...customs, ...presets].find(ai => ai.url === targetUrl);
+                        if(match) targetName = match.name;
+                        
+                        loadUrl(targetUrl, targetName, null, true);
+                        
+                    } else {
+                        // 2. 默认搜索逻辑
+                        // 如果工具栏设为 disable 但依然触发了(罕见)，则默认搜索
+                        const engines = getEngines(); 
+                        const currentKey = localStorage.getItem('sideos_engine') || 'baidu'; 
+                        const eng = engines[currentKey];
+                        let searchUrl = eng ? eng.url + encodeURIComponent(text) : "https://www.baidu.com/s?wd=" + encodeURIComponent(text);
+                        loadUrl(searchUrl, text, null, false);
+                    }
+                }, 200);
+            }
+        });
+    }
+
+    // 启动时立即检查
+    checkPendingAction();
     function executeSearch(val) { const query = val.trim(); if(!query) return; const engines = getEngines(); const currentEng = engines[engineSelect.value]; let targetUrl = ""; if (query.startsWith('http') || query.includes('.') && !query.includes(' ')) targetUrl = query.startsWith('http') ? query : 'https://' + query; else targetUrl = currentEng.url + encodeURIComponent(query); if (openModeSelect.value === 'new-tab') window.open(targetUrl, '_blank'); else loadUrl(targetUrl, "Search", null); }
     const handleKeySearch = (e, val) => { if (e.key === 'Enter') executeSearch(val); };
     urlInput.addEventListener('keypress', (e) => handleKeySearch(e, urlInput.value)); homeSearchInput.addEventListener('keypress', (e) => handleKeySearch(e, homeSearchInput.value));
@@ -1065,26 +1242,46 @@ document.addEventListener('DOMContentLoaded', function() {
             appStartupModeInput.value = app.startupMode || 'default'; 
             appCategoryInput.value = app.category || 'default'; appIconInput.value = app.icon.startsWith('data:') ? '[本地图片]' : app.icon; if(app.icon.startsWith('data:')) { currentUploadedIcon = app.icon; appIconInput.disabled = true; } modalConfirm.textContent = "保存"; 
         } else if (action === 'delete') { 
-    // 👇 [修复] 先获取应用列表，并查找当前要删除的 App 对象
-    const apps = getApps();
-    const app = apps.find(a => a.id === id);
-    
-    // 如果找不到（异常情况），直接关闭弹窗
-    if (!app) return closeModal();
+            const apps = getApps();
+            const app = apps.find(a => a.id === id);
+            
+            // 安全校验：如果找不到对象，直接关闭
+            if (!app) return closeModal();
 
-    modalTitle.textContent = "删除应用"; 
-    modalMsg.style.display = 'block'; 
-    // 现在 app 已定义，可以安全读取 app.name 了
-    modalMsg.innerHTML = `确定要删除 "<strong>${app.name}</strong>" 吗？`; 
-    modalConfirm.className = 'modal-btn btn-danger'; 
-    modalConfirm.textContent = "确认删除";
+            modalTitle.textContent = "删除应用"; 
+            modalMsg.style.display = 'block'; 
+            
+            // [安全升级] 先设置静态HTML结构，再通过textContent安全插入动态名称
+            modalMsg.innerHTML = '确定要删除 "<strong></strong>" 吗？'; 
+            modalMsg.querySelector('strong').textContent = app.name;
+
+            modalConfirm.className = 'modal-btn btn-danger'; 
+            modalConfirm.textContent = "确认删除";
+            
+        } else if (action === 'alert') { 
+             // ... (保持 alert 逻辑不变，或者确认下方 action 为 delete_category)
+             modalTitle.textContent = "提示"; modalMsg.style.display = 'block'; modalMsg.textContent = id; modalConfirm.className = 'modal-btn btn-primary'; modalConfirm.textContent = "确定"; modalCancel.style.display = 'none'; 
+        
+        } else if (action === 'delete_category') {
+            const cats = getCategories(); 
+            const cat = cats.find(c => c.id === id); 
+            
+            if (!cat) return closeModal();
+
+            modalTitle.textContent = "删除分类"; 
+            modalMsg.style.display = 'block'; 
+            
+            // [安全升级] 分离结构与内容，防止 XSS 攻击
+            modalMsg.innerHTML = '确定要删除 "<strong></strong>" 吗？<br><span style="font-size:12px;opacity:0.7">该分类下的应用将移动到"默认"分类</span>';
+            modalMsg.querySelector('strong').textContent = cat.name;
+
+            modalConfirm.className = 'modal-btn btn-danger'; 
+            modalConfirm.textContent = "确认删除"; 
         } else if (action === 'alert') { modalTitle.textContent = "提示"; modalMsg.style.display = 'block'; modalMsg.textContent = id; modalConfirm.className = 'modal-btn btn-primary'; modalConfirm.textContent = "确定"; modalCancel.style.display = 'none'; 
         } else if (action === 'qr') { modalTitle.textContent = "扫码同步"; if (qrContainer) qrContainer.style.display = 'flex'; modalConfirm.style.display = 'none'; 
         } else if (action === 'add_category') { modalTitle.textContent = "添加新分类"; modalForm.style.display = 'flex'; appNameInput.style.display = 'block'; appNameInput.placeholder = "分类名称"; appNameInput.value = ""; modalConfirm.textContent = "创建";
         } else if (action === 'edit_category') { modalTitle.textContent = "编辑分类"; modalForm.style.display = 'flex'; appNameInput.style.display = 'block'; const cats = getCategories(); const cat = cats.find(c => c.id === id); appNameInput.placeholder = "分类名称"; appNameInput.value = cat ? cat.name : ""; modalConfirm.textContent = "保存";
-        } else if (action === 'delete_category') {
-            const cats = getCategories(); const cat = cats.find(c => c.id === id); modalTitle.textContent = "删除分类"; modalMsg.style.display = 'block'; modalMsg.innerHTML = `确定要删除 "<strong>${cat.name}</strong>" 吗？<br><span style="font-size:12px;opacity:0.7">该分类下的应用将移动到"默认"分类</span>`; modalConfirm.className = 'modal-btn btn-danger'; modalConfirm.textContent = "确认删除"; 
-        } else if (action === 'add_engine') { modalTitle.textContent = "添加搜索引擎"; modalForm.style.display = 'flex'; appNameInput.style.display = 'block'; appNameInput.value = ''; appNameInput.placeholder = "引擎名称 (如: Google)"; appUrlInput.style.display = 'block'; appUrlInput.value = ''; appUrlInput.placeholder = "搜索 URL (如: https://.../s?q=)"; modalConfirm.textContent = "添加引擎";
+        }else if (action === 'add_engine') { modalTitle.textContent = "添加搜索引擎"; modalForm.style.display = 'flex'; appNameInput.style.display = 'block'; appNameInput.value = ''; appNameInput.placeholder = "引擎名称 (如: Google)"; appUrlInput.style.display = 'block'; appUrlInput.value = ''; appUrlInput.placeholder = "搜索 URL (如: https://.../s?q=)"; modalConfirm.textContent = "添加引擎";
         } else if (action === 'manage_engines') {
             modalTitle.textContent = "管理自定义引擎"; modalForm.style.display = 'flex'; modalConfirm.style.display = 'none'; modalCancel.textContent = "完成";
             const listContainer = document.createElement('div'); listContainer.id = 'temp-engine-list'; listContainer.className = 'engine-manage-list'; 
@@ -1134,34 +1331,61 @@ document.addEventListener('DOMContentLoaded', function() {
         else if (action === 'cloud_restore_success') { const count = id; modalTitle.textContent = "恢复成功"; modalMsg.style.display = 'block'; modalMsg.innerHTML = `✅ 已成功导入 <strong>${count}</strong> 项配置。<br><span style="font-size:12px;opacity:0.7;">点击下方按钮刷新以应用更改。</span>`; modalConfirm.className = 'modal-btn btn-primary'; modalConfirm.textContent = "立即刷新"; modalCancel.style.display = 'none'; }
         
         else if (action === 'select_ai_service') {
-            modalTitle.textContent = "选择 AI 服务"; modalForm.style.display = 'flex'; modalConfirm.style.display = 'none'; modalCancel.textContent = "关闭";
+            // [修复] 优先使用传入的 id 更新类型；如果没有传入(比如从删除界面返回)，则保持上一次的类型
+            if (id) aiConfigTarget = id;
+            
+            modalTitle.textContent = aiConfigTarget === 'toolbar' ? "选择工具栏 AI" : "选择右键 AI";
+            modalForm.style.display = 'flex'; modalConfirm.style.display = 'none'; modalCancel.textContent = "关闭";
             const listContainer = document.createElement('div'); listContainer.className = 'engine-manage-list'; listContainer.style.maxHeight = "300px"; listContainer.style.flex = "1"; modalForm.appendChild(listContainer);
-            const presets = PRESET_AIS; const customs = JSON.parse(localStorage.getItem('sideos_custom_ais') || '[]'); const currentUrl = localStorage.getItem('sideos_context_url') || 'https://chatgpt.com/';
+            
+            const presets = PRESET_AIS; const customs = JSON.parse(localStorage.getItem('sideos_custom_ais') || '[]'); 
+            
+            // 根据类型读取对应的当前 URL
+            const currentUrl = aiConfigTarget === 'toolbar' 
+                ? (localStorage.getItem('sideos_selection_toolbar_url') || 'https://chatgpt.com/')
+                : (localStorage.getItem('sideos_context_url') || 'https://chatgpt.com/');
+
             const renderAiList = () => {
                 listContainer.innerHTML = '';
                 const addBtn = document.createElement('div'); addBtn.className = 'engine-item-row'; addBtn.style.justifyContent = 'center'; addBtn.style.color = 'var(--accent)'; addBtn.style.cursor = 'pointer'; addBtn.style.fontWeight = '500'; addBtn.innerHTML = '<span>➕ 添加自定义网址...</span>';
                 addBtn.onclick = () => { openModal('add_custom_ai'); }; listContainer.appendChild(addBtn);
+                
                 const allAis = [...customs, ...presets]; 
                 allAis.forEach((ai, index) => {
                     const isCustom = index < customs.length; 
                     const row = document.createElement('div'); row.className = 'engine-item-row'; row.style.cursor = 'pointer';
                     if (ai.url === currentUrl) { row.style.background = 'var(--accent)'; row.style.color = 'white'; }
+                    
                     const leftDiv = document.createElement('div'); leftDiv.style.display = 'flex'; leftDiv.style.alignItems = 'center'; leftDiv.style.gap = '10px'; leftDiv.style.flex = '1';
                     const iconUrl = getFaviconUrl(ai.url); const iconEl = createSafeIcon(iconUrl, ai.name); iconEl.style.width = '20px'; iconEl.style.height = '20px'; if(iconEl.querySelector('.icon-text-fallback')) iconEl.querySelector('.icon-text-fallback').style.fontSize = "12px";
                     const nameSpan = document.createElement('span'); nameSpan.textContent = ai.name; nameSpan.style.fontSize = '14px'; leftDiv.appendChild(iconEl); leftDiv.appendChild(nameSpan);
+                    
                     const rightDiv = document.createElement('div');
                     if (isCustom) {
                         const delBtn = document.createElement('div'); delBtn.className = 'engine-delete-btn'; delBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>'; delBtn.style.background = 'rgba(255,255,255,0.2)'; 
                         delBtn.onclick = (e) => { e.stopPropagation(); openModal('delete_custom_ai', index); };
                         rightDiv.appendChild(delBtn);
                     } else if (ai.url === currentUrl) { rightDiv.innerHTML = '✓'; }
+                    
                     row.appendChild(leftDiv); row.appendChild(rightDiv);
-                    row.onclick = () => { localStorage.setItem('sideos_context_url', ai.url); const nameDisplay = document.getElementById('current-ai-name'); if (nameDisplay) nameDisplay.textContent = ai.name; closeModal(); };
+                    row.onclick = () => { 
+                        // [关键修复] 直接获取 DOM 元素，解决作用域报错问题
+                        if (aiConfigTarget === 'toolbar') {
+                            localStorage.setItem('sideos_selection_toolbar_url', ai.url);
+                            const tbName = document.getElementById('current-toolbar-ai-name');
+                            if(tbName) tbName.textContent = ai.name;
+                        } else {
+                            localStorage.setItem('sideos_context_url', ai.url);
+                            const ctxName = document.getElementById('current-ai-name');
+                            if (ctxName) ctxName.textContent = ai.name; 
+                        }
+                        closeModal(); 
+                    };
                     listContainer.appendChild(row);
                 });
             };
             renderAiList();
-        } 
+        }
         else if (action === 'add_custom_ai') {
             modalTitle.textContent = "添加 AI 网址"; modalForm.style.display = 'flex';
             appNameInput.style.display = 'block'; appNameInput.value = ''; appNameInput.placeholder = "名称 (例如: My AI)";

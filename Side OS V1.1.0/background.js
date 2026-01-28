@@ -124,9 +124,25 @@ function toggleSidePanelPermission(tabId) {
 
 function handleMenuClick(info, windowId, tab) {
     if (info.menuItemId === "sideos_search") {
-        if (chrome.sidePanel && chrome.sidePanel.open) chrome.sidePanel.open({ windowId: windowId }).catch(() => {});
+        // [修复] 存入 storage 信箱，注明来源是 "context" (右键)
+        chrome.storage.local.set({ 
+            'sideos_pending_action': { 
+                type: 'context', 
+                text: info.selectionText 
+            } 
+        }, () => {
+            // 存好后再开门
+            if (chrome.sidePanel && chrome.sidePanel.open) {
+                chrome.sidePanel.open({ windowId: windowId }).catch(() => {});
+            }
+        });
+        
+        // 保留消息发送作为双重保险 (针对侧边栏已经打开的情况)
         setTimeout(() => {
-            chrome.runtime.sendMessage({ action: "performSearchFromMenu", text: info.selectionText }).catch(() => {});
+            chrome.runtime.sendMessage({ 
+                action: "performSearchFromMenu", 
+                text: info.selectionText 
+            }).catch(() => {});
         }, 300);
 
     } else if (info.menuItemId === "sideos_toggle") {
@@ -199,5 +215,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else if (request.action === "disableMobile") {
         applyRules(false, () => sendResponse({status: "PC Enabled"}));
         return true; 
+    } else if (request.action === "openSidePanel") {
+        // [新增] 接收来自网页的“打开侧边栏”指令
+        // 注意：Chrome 限制此 API 必须在用户交互上下文中调用。
+        // 点击网页内的 ShadowDOM 按钮属于用户交互，通常允许触发。
+        if (chrome.sidePanel && chrome.sidePanel.open) {
+            // 获取发送消息的标签页所在的窗口ID
+            const winId = sender.tab.windowId;
+            chrome.sidePanel.open({ windowId: winId }).catch(err => {
+                console.warn("尝试自动打开侧边栏失败 (可能是浏览器限制):", err);
+            });
+        }
+        return false;
     }
 });

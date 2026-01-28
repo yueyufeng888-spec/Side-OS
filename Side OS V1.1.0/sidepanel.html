@@ -498,6 +498,24 @@
                         </svg>
                     </div>
                 </div>
+                <div class="setting-item">
+                    <span>划词工具栏<span class="tooltip-icon" data-msg="选中文本后显示快捷图标，支持一键搜索或 AI 跳转">?</span></span>
+                    <select id="selection-toolbar-mode-select">
+                        <option value="disable">🚫 禁用</option>
+                        <option value="search">🔍 默认引擎搜索</option>
+                        <option value="copy_open">📋 复制并跳转 AI</option>
+                    </select>
+                </div>
+                
+                <div class="setting-item setting-sub-item" id="selection-toolbar-ai-config-row" style="display:none; cursor:pointer;">
+                    <span>跳转 AI 网页</span>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span id="current-toolbar-ai-name" style="color:var(--accent); font-size:14px;">ChatGPT</span>
+                        <svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:currentColor; opacity:0.5;">
+                            <path d="M7 10l5 5 5-5z" />
+                        </svg>
+                    </div>
+                </div>
             </div>
 	        
             <div class="setting-group">

@@ -22,6 +22,11 @@
   },
   "host_permissions": [
     "<all_urls>"
+  ],"web_accessible_resources": [
+    {
+      "resources": ["icons/*.png", "icons/*.svg"],
+      "matches": ["<all_urls>"]
+    }
   ],
   "content_scripts": [
     {
